@@ -1,3 +1,3 @@
 #! /bin/bash
 
-cp -r code result/backup
+cp -r origin/code result/backup

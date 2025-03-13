@@ -7,6 +7,5 @@ elif (($# == 1))
 then
 	sed '$1,$d' stderr.txt
 else
-then
 	cat stderr.txt
 fi
