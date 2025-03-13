@@ -1,0 +1,3 @@
+.PHONY clean run check
+
+
