@@ -2,6 +2,17 @@
 #include <print.h>
 #include <stream.h>
 
+void outputk2(void *data, const char *buf, size_t len) {
+	data = (FILE*)data;
+	for (int i = 0; i < len; i++) {
+		*(data->ptr) = buf[i];
+		data->ptr++;
+		if(data->ptr - data->end > 0) {
+			data->end = data->ptr;
+		}
+	}
+}
+
 void *memcpy(void *dst, const void *src, size_t n) {
 	void *dstaddr = dst;
 	void *max = dst + n;
@@ -100,20 +111,20 @@ int strcmp(const char *p, const char *q) {
 
 FILE *fmemopen(FILE *stream, void *buf, const char *mode)
  {
-	if(mode == "w") {
+	if(strcmp(mode, "w") == 0) {
 		stream->ptr = buf;
 		stream->base = buf;
 		stream->end = buf;
 		return stream;
 	}
-	else if(mode == "a") {
+	else if(strcmp(mode, "a") == 0) {
 		stream->base = (char *)buf;
 		stream->ptr = (char *)buf + strlen((char *)buf);
 		stream->end = (char *)buf + strlen((char *)buf);
 		return stream;
 	}
 	else {
-		return null;
+		return NULL;
 	}
  }
 
@@ -124,16 +135,6 @@ int fmemprintf(FILE *stream, const char *fmt, ...){
 	vprintfmt(outputk2, stream, fmt, ap);
 	va_end(ap);
 	return (stream->ptr - former);
-}
-
-void outputk2(void *data, const char *buf, size_t len) {
-	for (int i = 0; i < len; i++) {
-		*(data->ptr) = buf[i];
-		data->ptr++;
-		if(data->ptr - data->end > 0) {
-			data->end = data->ptr;
-		}
-	}
 }
 
 int fseek(FILE *stream, long offset, int fromwhere){
