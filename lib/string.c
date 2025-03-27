@@ -3,12 +3,12 @@
 #include <stream.h>
 
 void outputk2(void *data, const char *buf, size_t len) {
-	data = (FILE*)data;
+	FILE *data2 = (FILE*)data;
 	for (int i = 0; i < len; i++) {
-		*(data->ptr) = buf[i];
-		data->ptr++;
-		if(data->ptr - data->end > 0) {
-			data->end = data->ptr;
+		*(data2->ptr) = buf[i];
+		data2->ptr++;
+		if(data2->ptr - data2->end > 0) {
+			data2->end = data2->ptr;
 		}
 	}
 }
