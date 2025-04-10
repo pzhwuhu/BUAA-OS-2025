@@ -298,6 +298,26 @@ void page_decref(struct Page *pp) {
 	}
 }
 
+u_int page_conditional_remove(Pde *pgdir, u_int asid, u_int perm_mask, u_long begin_va, u_long end_va) {
+	struct Page *pp;
+	Pte *pte;
+	int num = 0;
+
+	for(u_long i = begin_va; i < end_va; i++) {
+		pp = page_lookup(pgdir, i, &pte);
+		if(pp != NULL) {
+			if(*pte & perm_mask) {
+				pp->pp_ref = 0;
+				page_decref(pp);
+				tlb_invalidate(asid, i);
+				num++;
+			}
+		}
+	}
+
+	return num;
+}
+
 /* Lab 2 Key Code "page_remove" */
 // Overview:
 //   Unmap the physical page at virtual address 'va'.
