@@ -16,6 +16,65 @@ static u_long freemem;
 
 struct Page_list page_free_list; /* Free list of physical pages */
 
+
+#include <malloc.h>
+#include <queue.h>
+
+struct MBlock_list mblock_list;
+
+void malloc_init() {
+
+	printk("malloc_init begin\n");
+
+	LIST_INIT(&mblock_list);
+
+	struct MBlock *heap_begin = (struct MBlock*) HEAP_BEGIN;
+
+	printk("heap_begin: 0x%X\n", heap_begin);
+
+	heap_begin->size = HEAP_SIZE - MBLOCK_SIZE;
+	heap_begin->ptr = (void*) heap_begin->data;
+	heap_begin->free = 1;
+
+	LIST_INSERT_HEAD(&mblock_list, heap_begin, mb_link);
+
+	printk("malloc_init end\n");
+
+}
+
+void *malloc(size_t size) {
+	/* Your Code Here (1/2) */
+	int need = ROUND(size, 8);
+	struct MBlock *mb;
+	LIST_FOREACH(mb, &mblock_list, mb_link) {
+		if(mb->free == 1 && mb->size >= need) {
+			if(mb->size - need >= 32) {
+				struct MBlock *heap_new = (struct MBlock*) mb->ptr;
+				heap_new->size = need;
+				heap_new->ptr = (void*) heap_new->data;
+				heap_new->free = 0;
+
+				LIST_INSERT_BEFORE(mb, heap_new, mb_link);
+
+				mb->size -= need;
+			} else {
+				struct MBlock *heap_new = (struct MBlock*) mb->ptr;
+				heap_new->size = mb->size;
+				heap_new->ptr = (void*) heap_new->data;
+				heap_new->free = 0;
+
+				LIST_INSERT_BEFORE(mb, heap_new, mb_link);
+
+				mb->size -= need;
+			}
+		}
+	}
+}
+
+void free(void *p) {
+	/* Your Code Here (2/2) */
+}
+
 /* Overview:
  *   Use '_memsize' from bootloader to initialize 'memsize' and
  *   calculate the corresponding 'npage' value.
