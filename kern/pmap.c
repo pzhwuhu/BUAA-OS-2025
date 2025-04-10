@@ -197,7 +197,8 @@ static int pgdir_walk(Pde *pgdir, u_long va, int create, Pte **ppte) {
 		if(create) {
 			try(page_alloc(&pp));
 			*pgdir_entryp = page2pa(pp);
-			*pgdir_entryp = (*pgdir_entryp) | PTE_C_CACHEABLE | PTE_V;
+			*pgdir_entryp = (*pgdir_entryp) | PTE_C_CACHEABLE | PTE_V; /*有效位和可缓存位
+			后者通常对于所有物理页面，都将其配置为可缓存*/
 			pp->pp_ref++;
 		} else {
 			*ppte = 0;
