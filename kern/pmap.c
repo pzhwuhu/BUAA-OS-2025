@@ -308,6 +308,7 @@ u_int page_conditional_remove(Pde *pgdir, u_int asid, u_int perm_mask, u_long be
 		if(pp != NULL) {
 			if((*pte & perm_mask) != 0) {
 				page_decref(pp);
+				*pte = 0;
 				tlb_invalidate(asid, i);
 				num++;
 			}
