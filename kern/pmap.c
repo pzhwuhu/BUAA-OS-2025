@@ -16,9 +16,8 @@ static u_long freemem;
 
 struct Page_list page_free_list; /* Free list of physical pages */
 
-
-#include <malloc.h>
 #include <queue.h>
+#include <malloc.h>
 
 struct MBlock_list mblock_list;
 
@@ -42,37 +41,58 @@ void malloc_init() {
 
 }
 
-void *malloc(size_t size) {
-	/* Your Code Here (1/2) */
-	int need = ROUND(size, 8);
-	struct MBlock *mb;
-	LIST_FOREACH(mb, &mblock_list, mb_link) {
-		if(mb->free == 1 && mb->size >= need) {
-			if(mb->size - need >= 32) {
-				struct MBlock *heap_new = (struct MBlock*) mb->ptr;
-				heap_new->size = need;
-				heap_new->ptr = (void*) heap_new->data;
-				heap_new->free = 0;
+void *malloc(size_t size)
+{
+	size_t tsize = ROUND(size, 8);
+	struct MBlock *now = (struct MBlock *)HEAP_BEGIN;
+	while (now != NULL)
+	{
+		if (now->free == 1 && now->size >= tsize)
+		{
 
-				LIST_INSERT_BEFORE(mb, heap_new, mb_link);
+			if (now->size - tsize < 32)
+			{
+				now->free = 0;
+			}
+			else
+			{
+				now->free = 0;
+				struct MBlock *nblock = (void *)now + 24 + tsize;
+				nblock->size = now->size - tsize - 24;
+				nblock->ptr = (void *)nblock->data;
+				nblock->free = 1;
+				now->size = tsize;
+				LIST_INSERT_AFTER(now, nblock, mb_link);
+			}
+			return (void *)(now->data);
+		}
+		now = LIST_NEXT(now, mb_link);
+	}
+	return NULL;
+}
 
-				mb->size -= need;
-			} else {
-				struct MBlock *heap_new = (struct MBlock*) mb->ptr;
-				heap_new->size = mb->size;
-				heap_new->ptr = (void*) heap_new->data;
-				heap_new->free = 0;
-
-				LIST_INSERT_BEFORE(mb, heap_new, mb_link);
-
-				mb->size -= need;
+void free(void *p)
+{
+	if (p >= HEAP_BEGIN + MBLOCK_SIZE && p <= HEAP_BEGIN + HEAP_SIZE)
+	{
+		struct MBlock *now = (void *)p - MBLOCK_SIZE;
+		if (now->ptr == now->data)
+		{
+			now->free = 1;
+			struct MBlock *nxt = LIST_NEXT(now, mb_link);
+			if (nxt != NULL && nxt->free == 1)
+			{
+				now->size = now->size + nxt->size + 24;
+				LIST_REMOVE(nxt, mb_link);
+			}
+			struct MBlock *pre = MBLOCK_PREV(now, mb_link);
+			if (pre != NULL && pre->free == 1)
+			{
+				pre->size = pre->size + now->size + 24;
+				LIST_REMOVE(now, mb_link);
 			}
 		}
 	}
-}
-
-void free(void *p) {
-	/* Your Code Here (2/2) */
 }
 
 /* Overview:
