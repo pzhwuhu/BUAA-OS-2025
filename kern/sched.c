@@ -51,7 +51,7 @@ void schedule(int yield) {
 	}
 
 	u_int min_deadline = -1, min_id = -1;
-	Struct Env *min_env;
+	struct Env *min_env;
 	/* (2) 遍历 env_edf_sched_list，选取 env_runtime_left 大于 0 且 env_period_deadline 最小的进程调度（若相同，则选择 env_id 最小的进程）。如果不存在这样的进程，则不进行调度。 */
 	LIST_FOREACH (env, &env_edf_sched_list, env_edf_sched_link) {
 		if(env->env_runtime_left > 0) {

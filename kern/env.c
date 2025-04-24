@@ -378,7 +378,7 @@ struct Env *env_create(const void *binary, size_t size, int priority) {
 }
 
 struct Env *env_create_edf(const void *binary, size_t size, int runtime, int period) {
-	Struct Env *e;
+	struct Env *e;
 	panic_on(env_alloc(&e, 0));
 
 	e->env_edf_runtime = runtime;
