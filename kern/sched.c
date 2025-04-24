@@ -63,6 +63,7 @@ void schedule(int yield) {
 		}
 	}
 	if(min_deadline != -1) {
+		printk("edf sched\n");
 		env_run(min_env);
 	}
 
