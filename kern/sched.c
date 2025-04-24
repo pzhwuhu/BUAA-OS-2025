@@ -68,7 +68,7 @@ void schedule(int yield) {
 
 	/* (3) 使用课下实现的 RR 算法调度 env_sched_list 中的进程。 */
 	static int count = 0; // remaining time slices of current env
-	static Env *last_RR = NULL;
+	static struct Env *last_RR = NULL;
 	struct Env *e = last_RR; // 请根据提示修改这行代码
 
 	if (yield || count == 0 || e == NULL || e->env_status != ENV_RUNNABLE) {
