@@ -39,7 +39,17 @@ struct Env {
 
 	// Lab 6 scheduler counts
 	u_int env_runs; // number of times we've been env_run'ed
+
+	LIST_ENTRY(Env) env_edf_sched_link; // 构造 env_edf_sched_list 的链表项
+	u_int env_edf_runtime; // EDF 调度参数：进程在每个周期内需要运行的时间片
+	u_int env_edf_period; // EDF 调度参数：进程的运行周期
+	u_int env_period_deadline; // 进程当前周期的截止时间
+	u_int env_runtime_left; // 进程当前周期剩余的时间片
 };
+
+LIST_HEAD(Env_edf_sched_list, Env);
+extern struct Env_edf_sched_list env_edf_sched_list; // EDF 调度队列
+struct Env *env_create_edf(const void *binary, size_t size, int runtime, int period);
 
 LIST_HEAD(Env_list, Env);
 TAILQ_HEAD(Env_sched_list, Env);
