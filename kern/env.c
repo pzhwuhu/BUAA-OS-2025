@@ -8,7 +8,7 @@
 
 struct Env envs[NENV] __attribute__((aligned(PAGE_SIZE))); // All environments
 
-struct Env *curenv = NULL;	      // the current env
+struct Env *curenv = NULL;			  // the current env
 static struct Env_list env_free_list; // Free list
 
 // Invariant: 'env' in 'env_sched_list' iff. 'env->env_status' is 'RUNNABLE'.
@@ -25,11 +25,14 @@ static uint32_t asid_bitmap[NASID / 32] = {0};
  *   return 0 and set '*asid' to the allocated ASID on success.
  *   return -E_NO_FREE_ENV if no ASID is available.
  */
-static int asid_alloc(u_int *asid) {
-	for (u_int i = 0; i < NASID; ++i) {
+static int asid_alloc(u_int *asid)
+{
+	for (u_int i = 0; i < NASID; ++i)
+	{
 		int index = i >> 5;
 		int inner = i & 31;
-		if ((asid_bitmap[index] & (1 << inner)) == 0) {
+		if ((asid_bitmap[index] & (1 << inner)) == 0)
+		{
 			asid_bitmap[index] |= 1 << inner;
 			*asid = i;
 			return 0;
@@ -47,7 +50,8 @@ static int asid_alloc(u_int *asid) {
  * Post-Condition:
  *  The ASID is freed and may be allocated again later.
  */
-static void asid_free(u_int i) {
+static void asid_free(u_int i)
+{
 	int index = i >> 5;
 	int inner = i & 31;
 	asid_bitmap[index] &= ~(1 << inner);
@@ -60,14 +64,16 @@ static void asid_free(u_int i) {
  * Pre-Condition:
  *   'pa', 'va' and 'size' are aligned to 'PAGE_SIZE'.
  */
-static void map_segment(Pde *pgdir, u_int asid, u_long pa, u_long va, u_int size, u_int perm) {
+static void map_segment(Pde *pgdir, u_int asid, u_long pa, u_long va, u_int size, u_int perm)
+{
 
 	assert(pa % PAGE_SIZE == 0);
 	assert(va % PAGE_SIZE == 0);
 	assert(size % PAGE_SIZE == 0);
 
 	/* Step 1: Map virtual address space to physical address space. */
-	for (int i = 0; i < size; i += PAGE_SIZE) {
+	for (int i = 0; i < size; i += PAGE_SIZE)
+	{
 		/*
 		 * Hint:
 		 *  Map the virtual page 'va + i' to the physical page 'pa + i' using 'page_insert'.
@@ -87,7 +93,8 @@ static void map_segment(Pde *pgdir, u_int asid, u_long pa, u_long va, u_int size
  * Post-Condition:
  *  return e's envid on success
  */
-u_int mkenvid(struct Env *e) {
+u_int mkenvid(struct Env *e)
+{
 	static u_int i = 0;
 	return ((++i) << (1 + LOG2NENV)) | (e - envs);
 }
@@ -105,7 +112,8 @@ u_int mkenvid(struct Env *e) {
  *   return 0 on success, and set '*penv' to the env.
  *   return -E_BAD_ENV on error (invalid 'envid' or 'checkperm' violated).
  */
-int envid2env(u_int envid, struct Env **penv, int checkperm) {
+int envid2env(u_int envid, struct Env **penv, int checkperm)
+{
 	struct Env *e;
 
 	/* Step 1: Assign value to 'e' using 'envid'. */
@@ -114,8 +122,15 @@ int envid2env(u_int envid, struct Env **penv, int checkperm) {
 	 *   You may want to use 'ENVX'.
 	 */
 	/* Exercise 4.3: Your code here. (1/2) */
+	if (envid == 0)
+	{
+		*penv = curenv;
+		return 0;
+	}
+	e = envs + ENVX(envid);
 
-	if (e->env_status == ENV_FREE || e->env_id != envid) {
+	if (e->env_status == ENV_FREE || e->env_id != envid)
+	{
 		return -E_BAD_ENV;
 	}
 
@@ -126,6 +141,10 @@ int envid2env(u_int envid, struct Env **penv, int checkperm) {
 	 *   If violated, return '-E_BAD_ENV'.
 	 */
 	/* Exercise 4.3: Your code here. (2/2) */
+	if (checkperm && e != curenv && e->env_parent_id != curenv->env_id)
+	{
+		return -E_BAD_ENV;
+	}
 
 	/* Step 3: Assign 'e' to '*penv'. */
 	*penv = e;
@@ -139,7 +158,8 @@ int envid2env(u_int envid, struct Env **penv, int checkperm) {
  * Hints:
  *   You may use these macro definitions below: 'LIST_INIT', 'TAILQ_INIT', 'LIST_INSERT_HEAD'
  */
-void env_init(void) {
+void env_init(void)
+{
 	int i;
 	/* Step 1: Initialize 'env_free_list' with 'LIST_INIT' and 'env_sched_list' with
 	 * 'TAILQ_INIT'. */
@@ -172,15 +192,16 @@ void env_init(void) {
 
 	base_pgdir = (Pde *)page2kva(p);
 	map_segment(base_pgdir, 0, PADDR(pages), UPAGES,
-		    ROUND(npage * sizeof(struct Page), PAGE_SIZE), PTE_G);
+				ROUND(npage * sizeof(struct Page), PAGE_SIZE), PTE_G);
 	map_segment(base_pgdir, 0, PADDR(envs), UENVS, ROUND(NENV * sizeof(struct Env), PAGE_SIZE),
-		    PTE_G);
+				PTE_G);
 }
 
 /* Overview:
  *   Initialize the user address space for 'e'.
  */
-static int env_setup_vm(struct Env *e) {
+static int env_setup_vm(struct Env *e)
+{
 	/* Step 1:
 	 *   Allocate a page for the page directory with 'page_alloc'.
 	 *   Increase its 'pp_ref' and assign its kernel address to 'e->env_pgdir'.
@@ -200,7 +221,7 @@ static int env_setup_vm(struct Env *e) {
 	 *   See include/mmu.h for layout.
 	 */
 	memcpy(e->env_pgdir + PDX(UTOP), base_pgdir + PDX(UTOP),
-	       sizeof(Pde) * (PDX(UVPT) - PDX(UTOP)));
+		   sizeof(Pde) * (PDX(UVPT) - PDX(UTOP)));
 
 	/* Step 3: Map its own page table at 'UVPT' with readonly permission.
 	 * As a result, user programs can read its page table through 'UVPT' */
@@ -227,21 +248,26 @@ static int env_setup_vm(struct Env *e) {
  *     'env_id', 'env_asid', 'env_parent_id', 'env_tf.regs[29]', 'env_tf.cp0_status',
  *     'env_user_tlb_mod_entry', 'env_runs'
  */
-int env_alloc(struct Env **new, u_int parent_id) {
+int env_alloc(struct Env **new, u_int parent_id)
+{
 	int r;
 	struct Env *e;
 
 	/* Step 1: Get a free Env from 'env_free_list' */
 	/* Exercise 3.4: Your code here. (1/4) */
 	e = LIST_FIRST(&env_free_list);
-	if (e == NULL) {
+	if (e == NULL)
+	{
 		return -E_NO_FREE_ENV;
 	}
 
 	/* Step 2: Call a 'env_setup_vm' to initialize the user address space for this new Env. */
 	/* Exercise 3.4: Your code here. (2/4) */
 	r = env_setup_vm(e);
-	if (r != 0) { return r; }
+	if (r != 0)
+	{
+		return r;
+	}
 
 	/* Step 3: Initialize these fields for the new Env with appropriate values:
 	 *   'env_user_tlb_mod_entry' (lab4), 'env_runs' (lab6), 'env_id' (lab3), 'env_asid' (lab3),
@@ -252,12 +278,15 @@ int env_alloc(struct Env **new, u_int parent_id) {
 	 *   Use 'mkenvid' to allocate a free envid.
 	 */
 	e->env_user_tlb_mod_entry = 0; // for lab4
-	e->env_runs = 0;	       // for lab6
+	e->env_runs = 0;			   // for lab6
 	/* Exercise 3.4: Your code here. (3/4) */
 	e->env_id = mkenvid(e);
 	e->env_parent_id = parent_id;
 	r = asid_alloc(&e->env_asid);
-	if (r != 0) { return r; }
+	if (r != 0)
+	{
+		return r;
+	}
 
 	/* Step 4: Initialize the sp and 'cp0_status' in 'e->env_tf'.
 	 *   Set the EXL bit to ensure that the processor remains in kernel mode during context
@@ -294,7 +323,8 @@ int env_alloc(struct Env **new, u_int parent_id) {
  *   CPUs! QEMU doesn't simulate caching, allowing the OS to function correctly.
  */
 static int load_icode_mapper(void *data, u_long va, size_t offset, u_int perm, const void *src,
-			     size_t len) {
+							 size_t len)
+{
 	struct Env *env = (struct Env *)data;
 	struct Page *p;
 	int r;
@@ -306,7 +336,8 @@ static int load_icode_mapper(void *data, u_long va, size_t offset, u_int perm, c
 	/* Step 2: If 'src' is not NULL, copy the 'len' bytes started at 'src' into 'offset' at this
 	 * page. */
 	// Hint: You may want to use 'memcpy'.
-	if (src != NULL) {
+	if (src != NULL)
+	{
 		/* Exercise 3.5: Your code here. (2/2) */
 		memcpy((void *)page2kva(p) + offset, src, len);
 	}
@@ -320,10 +351,12 @@ static int load_icode_mapper(void *data, u_long va, size_t offset, u_int perm, c
  *   'binary' points to an ELF executable image of 'size' bytes, which contains both text and data
  *   segments.
  */
-static void load_icode(struct Env *e, const void *binary, size_t size) {
+static void load_icode(struct Env *e, const void *binary, size_t size)
+{
 	/* Step 1: Use 'elf_from' to parse an ELF header from 'binary'. */
 	const Elf32_Ehdr *ehdr = elf_from(binary, size);
-	if (!ehdr) {
+	if (!ehdr)
+	{
 		panic("bad elf at %x", binary);
 	}
 
@@ -331,9 +364,11 @@ static void load_icode(struct Env *e, const void *binary, size_t size) {
 	 * As a loader, we just care about loadable segments, so parse only program headers here.
 	 */
 	size_t ph_off;
-	ELF_FOREACH_PHDR_OFF (ph_off, ehdr) {
+	ELF_FOREACH_PHDR_OFF(ph_off, ehdr)
+	{
 		Elf32_Phdr *ph = (Elf32_Phdr *)(binary + ph_off);
-		if (ph->p_type == PT_LOAD) {
+		if (ph->p_type == PT_LOAD)
+		{
 			// 'elf_load_seg' is defined in lib/elfloader.c
 			// 'load_icode_mapper' defines the way in which a page in this segment
 			// should be mapped.
@@ -354,7 +389,8 @@ static void load_icode(struct Env *e, const void *binary, size_t size) {
  * Hint:
  *   'binary' is an ELF executable image in memory.
  */
-struct Env *env_create(const void *binary, size_t size, int priority) {
+struct Env *env_create(const void *binary, size_t size, int priority)
+{
 	struct Env *e;
 	/* Step 1: Use 'env_alloc' to alloc a new env, with 0 as 'parent_id'. */
 	/* Exercise 3.7: Your code here. (1/3) */
@@ -377,7 +413,8 @@ struct Env *env_create(const void *binary, size_t size, int priority) {
 /* Overview:
  *  Free env e and all memory it uses.
  */
-void env_free(struct Env *e) {
+void env_free(struct Env *e)
+{
 	Pte *pt;
 	u_int pdeno, pteno, pa;
 
@@ -385,19 +422,23 @@ void env_free(struct Env *e) {
 	printk("[%08x] free env %08x\n", curenv ? curenv->env_id : 0, e->env_id);
 
 	/* Hint: Flush all mapped pages in the user portion of the address space */
-	for (pdeno = 0; pdeno < PDX(UTOP); pdeno++) {
+	for (pdeno = 0; pdeno < PDX(UTOP); pdeno++)
+	{
 		/* Hint: only look at mapped page tables. */
-		if (!(e->env_pgdir[pdeno] & PTE_V)) {
+		if (!(e->env_pgdir[pdeno] & PTE_V))
+		{
 			continue;
 		}
 		/* Hint: find the pa and va of the page table. */
 		pa = PTE_ADDR(e->env_pgdir[pdeno]);
 		pt = (Pte *)KADDR(pa);
 		/* Hint: Unmap all PTEs in this page table. */
-		for (pteno = 0; pteno <= PTX(~0); pteno++) {
-			if (pt[pteno] & PTE_V) {
+		for (pteno = 0; pteno <= PTX(~0); pteno++)
+		{
+			if (pt[pteno] & PTE_V)
+			{
 				page_remove(e->env_pgdir, e->env_asid,
-					    (pdeno << PDSHIFT) | (pteno << PGSHIFT));
+							(pdeno << PDSHIFT) | (pteno << PGSHIFT));
 			}
 		}
 		/* Hint: free the page table itself. */
@@ -421,12 +462,14 @@ void env_free(struct Env *e) {
 /* Overview:
  *  Free env e, and schedule to run a new env if e is the current env.
  */
-void env_destroy(struct Env *e) {
+void env_destroy(struct Env *e)
+{
 	/* Hint: free e. */
 	env_free(e);
 
 	/* Hint: schedule to run a new environment. */
-	if (curenv == e) {
+	if (curenv == e)
+	{
 		curenv = NULL;
 		printk("i am killed ... \n");
 		schedule(1);
@@ -450,7 +493,8 @@ extern void env_pop_tf(struct Trapframe *tf, u_int asid) __attribute__((noreturn
  * Hints:
  *   You may use these functions: 'env_pop_tf'.
  */
-void env_run(struct Env *e) {
+void env_run(struct Env *e)
+{
 	assert(e->env_status == ENV_RUNNABLE);
 	// WARNING BEGIN: DO NOT MODIFY FOLLOWING LINES!
 #ifdef MOS_PRE_ENV_RUN
@@ -463,7 +507,8 @@ void env_run(struct Env *e) {
 	 *   If not, we may be switching from a previous env, so save its context into
 	 *   'curenv->env_tf' first.
 	 */
-	if (curenv) {
+	if (curenv)
+	{
 		curenv->env_tf = *((struct Trapframe *)KSTACKTOP - 1);
 	}
 
@@ -487,7 +532,8 @@ void env_run(struct Env *e) {
 	env_pop_tf(&curenv->env_tf, curenv->env_asid);
 }
 
-void env_check() {
+void env_check()
+{
 	struct Env *pe, *pe0, *pe1, *pe2;
 	struct Env_list fl;
 	u_long page_addr;
@@ -525,10 +571,12 @@ void env_check() {
 
 	/* 'UENVS' and 'UPAGES' should have been correctly mapped in *template* page directory
 	 * 'base_pgdir'. */
-	for (page_addr = 0; page_addr < npage * sizeof(struct Page); page_addr += PAGE_SIZE) {
+	for (page_addr = 0; page_addr < npage * sizeof(struct Page); page_addr += PAGE_SIZE)
+	{
 		assert(va2pa(base_pgdir, UPAGES + page_addr) == PADDR(pages) + page_addr);
 	}
-	for (page_addr = 0; page_addr < NENV * sizeof(struct Env); page_addr += PAGE_SIZE) {
+	for (page_addr = 0; page_addr < NENV * sizeof(struct Env); page_addr += PAGE_SIZE)
+	{
 		assert(va2pa(base_pgdir, UENVS + page_addr) == PADDR(envs) + page_addr);
 	}
 	/* check env_setup_vm() work well */
@@ -552,7 +600,8 @@ void env_check() {
 	printk("env_check() succeeded!\n");
 }
 
-void envid2env_check() {
+void envid2env_check()
+{
 	struct Env *pe, *pe0, *pe2;
 	assert(env_alloc(&pe0, 0) == 0);
 	assert(env_alloc(&pe2, 0) == 0);
