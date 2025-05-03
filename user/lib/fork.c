@@ -22,7 +22,7 @@ static void __attribute__((noreturn)) cow_entry(struct Trapframe *tf)
 	/* Hint: Use 'vpt' and 'VPN' to find the page table entry. If the 'perm' doesn't have
 	 * 'PTE_COW', launch a 'user_panic'. */
 	/* Exercise 4.13: Your code here. (1/6) */
-	perm = PTE_FLAGS(vpt + VPN(va));
+	perm = PTE_FLAGS(vpt[VPN(va)]);
 	if (!(perm & PTE_COW))
 	{
 		user_panic("The page does not have PTE_COW permission");
@@ -150,12 +150,12 @@ int fork(void)
 	/* Step 3: Map all mapped pages below 'USTACKTOP' into the child's address space. */
 	// Hint: You should use 'duppage'.
 	/* Exercise 4.15: Your code here. (1/2) */
-	for (i = 0; i < PDX(USTACKTOP); i++)
+	for (i = 0; i < PDX(UXSTACKTOP); i++)
 	{
 		if (vpd[i] & PTE_V)
 		{
 			u_int npage = PAGE_SIZE / sizeof(Pte);
-			for (u_int j = 0; j < npage; i++)
+			for (u_int j = 0; j < npage; j++)
 			{
 				u_int vpn = i * npage + j;
 				if (vpn << PGSHIFT >= USTACKTOP)
