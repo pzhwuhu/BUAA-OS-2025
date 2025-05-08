@@ -43,6 +43,7 @@ int sys_shm_new(u_int npage) {
 }
 
 int sys_shm_bind(int key, u_int va, u_int perm) {
+	printk("sys_shm_bind begin \n");
 	if (key < 0 || key >= N_SHM) {
 		return -E_SHM_INVALID;
 	}
@@ -59,7 +60,7 @@ int sys_shm_bind(int key, u_int va, u_int perm) {
 		*pte = page2pa(pp) | perm;
 		pp->pp_ref++;
 	}
-	printk("%d is bind to %x", va, shm.pages[0]);
+	printk("%d is bind to %x\n", va, shm.pages[0]);
 	return 0;
 }
 
