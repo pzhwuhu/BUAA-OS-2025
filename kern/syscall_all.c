@@ -53,7 +53,7 @@ int sys_shm_bind(int key, u_int va, u_int perm) {
 		return -E_SHM_NOT_OPEN;
 	}
 	for(int i=0;i<npage;i++){
-		try(page_insert(current->env_pgdir, curenv->env_asid, shm.pages[i], va + i*PAGE_SIZE, perm));
+		try(page_insert(curenv->env_pgdir, curenv->env_asid, shm.pages[i], va + i*PAGE_SIZE, perm));
 	}
 	return 0;
 }
@@ -69,7 +69,7 @@ int sys_shm_unbind(int key, u_int va) {
 		return -E_SHM_NOT_OPEN;
 	}
 	for(int i=0;i<npage;i++){
-		page_remove(current->env_pgdir, curenv->env_asid, va + i*PAGE_SIZE);
+		page_remove(curenv->env_pgdir, curenv->env_asid, va + i*PAGE_SIZE);
 	}
 	return 0;
 }
