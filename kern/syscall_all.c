@@ -19,7 +19,7 @@ int sys_shm_new(u_int npage) {
 	// Lab4-Extra: Your code here. (5/8)
 	for(int i=0;i<N_SHM;i++){
 		if(shm_pool[i].open == 0) {
-			Shm shm = shm_pool[i];
+			struct Shm shm = shm_pool[i];
 			for(int j=0;j<npage;j++){
 				struct Page *pp;
 
@@ -27,12 +27,12 @@ int sys_shm_new(u_int npage) {
 					/* free page not enough */
 					for(int k=0;k<j;k++){
 						struct Page *allocated = shm.pages[k];
-						page_decref(allocate);
+						page_decref(allocated);
 					}
 					return -E_NO_MEM;
 				}
 
-				pp.pp_ref++;
+				pp->pp_ref++;
 				shm.pages[j] = pp;
 			}
 			return i;
@@ -48,7 +48,7 @@ int sys_shm_bind(int key, u_int va, u_int perm) {
 	}
 
 	// Lab4-Extra: Your code here. (6/8)
-	Shm shm = shm_pool[key];
+	struct Shm shm = shm_pool[key];
 	if (shm.open == 0) {
 		return -E_SHM_NOT_OPEN;
 	}
@@ -64,7 +64,7 @@ int sys_shm_unbind(int key, u_int va) {
 	}
 
 	// Lab4-Extra: Your code here. (7/8)
-	Shm shm = shm_pool[key];
+	struct Shm shm = shm_pool[key];
 	if (shm.open == 0) {
 		return -E_SHM_NOT_OPEN;
 	}
@@ -80,7 +80,7 @@ int sys_shm_free(int key) {
 	}
 
 	// Lab4-Extra: Your code here. (8/8)
-	Shm shm = shm_pool[key];
+	struct Shm shm = shm_pool[key];
 	if (shm.open == 0) {
 		return -E_SHM_NOT_OPEN;
 	}
