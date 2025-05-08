@@ -62,6 +62,27 @@ int sys_shm_bind(int key, u_int va, u_int perm) {
 	return 0;
 }
 
+int pgdir_walk(Pde *pgdir, u_long va, int create, Pte **ppte) {
+	Pde *pgdir_entryp;
+	struct Page *pp;
+
+	pgdir_entryp = pgdir + PDX(va);
+
+	if(!((*pgdir_entryp) & PTE_V)) {
+		if(create) {
+			try(page_alloc(&pp));
+			*pgdir_entryp = page2pa(pp);
+			*pgdir_entryp = (*pgdir_entryp) | PTE_C_CACHEABLE | PTE_V;
+			pp->pp_ref++;
+		} else {
+			*ppte = 0;
+			return 0;
+		}
+	}
+	*ppte = (Pte *)KADDR(PTE_ADDR(*pgdir_entryp)) + PTX(va);
+	return 0;
+}
+
 int sys_shm_unbind(int key, u_int va) {
 	if (key < 0 || key >= N_SHM) {
 		return -E_SHM_INVALID;
