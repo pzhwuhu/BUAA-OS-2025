@@ -59,6 +59,8 @@
 #define PTE_C_CACHEABLE (0x0018 << PTE_HARDFLAG_SHIFT)
 #define PTE_C_UNCACHEABLE (0x0010 << PTE_HARDFLAG_SHIFT)
 
+#define PTE_PROTECT  0x0004
+
 // Copy On Write. Reserved for software, used by fork.
 #define PTE_COW 0x0001
 

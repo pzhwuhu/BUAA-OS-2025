@@ -4,6 +4,10 @@
 #include <syscall.h>
 #include <trap.h>
 
+int syscall_get_parent_envid(void) {
+	msyscall(SYS_get_ppid);
+}
+
 void syscall_putchar(int ch) {
 	msyscall(SYS_putchar, ch);
 }
