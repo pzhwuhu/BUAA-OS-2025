@@ -55,7 +55,7 @@ int sys_shm_bind(int key, u_int va, u_int perm) {
 	}
 	for(int i=0;i<shm.npage;i++){
 		struct Page *pp = shm.pages[i];
-		try(page_insert(curenv->env_pgdir, curenv->env_asid, pp, va + i*PAGE_SIZE, perm));
+		page_insert(curenv->env_pgdir, curenv->env_asid, pp, va + i*PAGE_SIZE, perm);
 	}
 	printk("%d is bind to %x\n", va, shm.pages[0]);
 	return 0;
