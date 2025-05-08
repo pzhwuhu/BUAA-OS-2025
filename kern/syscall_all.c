@@ -53,7 +53,11 @@ int sys_shm_bind(int key, u_int va, u_int perm) {
 		return -E_SHM_NOT_OPEN;
 	}
 	for(int i=0;i<npage;i++){
-		try(page_insert(curenv->env_pgdir, curenv->env_asid, shm.pages[i], va + i*PAGE_SIZE, perm));
+		Pte *pte;
+		struct Page *pp = shm.pages[i];
+		try(pgdir_walk(curenv->env_pgdir, va + i*PAGE_SIZE, 1, &pte));
+		*pte = page2pa(pp) | perm;
+		pp->pp_ref++;
 	}
 	return 0;
 }
