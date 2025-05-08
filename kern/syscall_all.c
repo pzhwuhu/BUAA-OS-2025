@@ -54,34 +54,10 @@ int sys_shm_bind(int key, u_int va, u_int perm) {
 		return -E_SHM_NOT_OPEN;
 	}
 	for(int i=0;i<npage;i++){
-		Pte *pte;
 		struct Page *pp = shm.pages[i];
-		try(pgdir_walk(curenv->env_pgdir, va + i*PAGE_SIZE, 1, &pte));
-		*pte = page2pa(pp) | perm;
-		pp->pp_ref++;
+		try(page_insert(curenv->env_pgdir, curenv->env_asid, pp, va + i*PAGE_SIZE, perm));
 	}
 	printk("%d is bind to %x\n", va, shm.pages[0]);
-	return 0;
-}
-
-int pgdir_walk(Pde *pgdir, u_long va, int create, Pte **ppte) {
-	Pde *pgdir_entryp;
-	struct Page *pp;
-
-	pgdir_entryp = pgdir + PDX(va);
-
-	if(!((*pgdir_entryp) & PTE_V)) {
-		if(create) {
-			try(page_alloc(&pp));
-			*pgdir_entryp = page2pa(pp);
-			*pgdir_entryp = (*pgdir_entryp) | PTE_C_CACHEABLE | PTE_V;
-			pp->pp_ref++;
-		} else {
-			*ppte = 0;
-			return 0;
-		}
-	}
-	*ppte = (Pte *)KADDR(PTE_ADDR(*pgdir_entryp)) + PTX(va);
 	return 0;
 }
 
