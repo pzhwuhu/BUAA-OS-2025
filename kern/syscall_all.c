@@ -20,7 +20,7 @@ int sys_shm_new(u_int npage) {
 	for(int i=0;i<N_SHM;i++){
 		if(shm_pool[i].open == 0) {
 			struct Shm shm = shm_pool[i];
-			for(int j=0;j<npage;j++){
+			for(int j=0;j<shm.npage;j++){
 				struct Page *pp;
 
 				if (page_alloc(&pp) != 0) {
@@ -87,7 +87,7 @@ int sys_shm_free(int key) {
 	if (shm.open == 0) {
 		return -E_SHM_NOT_OPEN;
 	}
-	for(int i=0;i<npage;i++){
+	for(int i=0;i<shm.npage;i++){
 		page_decref(shm.pages[i]);
 	}
 	shm.open = 0;
