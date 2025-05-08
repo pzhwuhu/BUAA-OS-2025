@@ -53,7 +53,7 @@ int sys_shm_bind(int key, u_int va, u_int perm) {
 	if (shm.open == 0) {
 		return -E_SHM_NOT_OPEN;
 	}
-	for(int i=0;i<npage;i++){
+	for(int i=0;i<shm.npage;i++){
 		struct Page *pp = shm.pages[i];
 		try(page_insert(curenv->env_pgdir, curenv->env_asid, pp, va + i*PAGE_SIZE, perm));
 	}
@@ -71,7 +71,7 @@ int sys_shm_unbind(int key, u_int va) {
 	if (shm.open == 0) {
 		return -E_SHM_NOT_OPEN;
 	}
-	for(int i=0;i<npage;i++){
+	for(int i=0;i<shm.npage;i++){
 		page_remove(curenv->env_pgdir, curenv->env_asid, va + i*PAGE_SIZE);
 	}
 	return 0;
