@@ -19,22 +19,25 @@ int sys_shm_new(u_int npage) {
 	// Lab4-Extra: Your code here. (5/8)
 	for(int i=0;i<N_SHM;i++){
 		if(shm_pool[i].open == 0) {
-			struct Shm shm = shm_pool[i];
-			for(int j=0;j<shm.npage;j++){
-				struct Page *pp;
+			struct Shm *shm = &shm_pool[i];
 
+			for(int j=0;j<npage;j++){
+				struct Page *pp;
+	
 				if (page_alloc(&pp) != 0) {
-					/* free page not enough */
 					for(int k=0;k<j;k++){
-						struct Page *allocated = shm.pages[k];
-						page_decref(allocated);
+						struct Page *allocated = shm->pages[k];
+						shm->pages[k] = NULL;
+						page_free(allocated);
 					}
 					return -E_NO_MEM;
 				}
 
+				shm->pages[j] = pp;
 				pp->pp_ref++;
-				shm.pages[j] = pp;
 			}
+			shm->open = 1;
+			shm->npage = npage;
 			return i;
 		}
 	}
@@ -43,21 +46,19 @@ int sys_shm_new(u_int npage) {
 }
 
 int sys_shm_bind(int key, u_int va, u_int perm) {
-	printk("sys_shm_bind begin \n");
 	if (key < 0 || key >= N_SHM) {
 		return -E_SHM_INVALID;
 	}
 
 	// Lab4-Extra: Your code here. (6/8)
-	struct Shm shm = shm_pool[key];
-	if (shm.open == 0) {
+	struct Shm *shm = &shm_pool[key];
+	if (shm->open == 0) {
 		return -E_SHM_NOT_OPEN;
 	}
-	for(int i=0;i<shm.npage;i++){
-		struct Page *pp = shm.pages[i];
+	for(int i=0;i<shm->npage;i++){
+		struct Page *pp = shm->pages[i];
 		page_insert(curenv->env_pgdir, curenv->env_asid, pp, va + i*PAGE_SIZE, perm);
 	}
-	printk("%d is bind to %x\n", va, shm.pages[0]);
 	return 0;
 }
 
@@ -67,11 +68,11 @@ int sys_shm_unbind(int key, u_int va) {
 	}
 
 	// Lab4-Extra: Your code here. (7/8)
-	struct Shm shm = shm_pool[key];
-	if (shm.open == 0) {
+	struct Shm *shm = &shm_pool[key];
+	if (shm->open == 0) {
 		return -E_SHM_NOT_OPEN;
 	}
-	for(int i=0;i<shm.npage;i++){
+	for(int i=0;i<shm->npage;i++){
 		page_remove(curenv->env_pgdir, curenv->env_asid, va + i*PAGE_SIZE);
 	}
 	return 0;
@@ -83,14 +84,14 @@ int sys_shm_free(int key) {
 	}
 
 	// Lab4-Extra: Your code here. (8/8)
-	struct Shm shm = shm_pool[key];
-	if (shm.open == 0) {
+	struct Shm *shm = &shm_pool[key];
+	if (shm->open == 0) {
 		return -E_SHM_NOT_OPEN;
 	}
-	for(int i=0;i<shm.npage;i++){
-		page_decref(shm.pages[i]);
+	for(int i=0;i<shm->npage;i++){
+		page_decref(shm->pages[i]);
 	}
-	shm.open = 0;
+	shm->open = 0;
 	return 0;
 }
 

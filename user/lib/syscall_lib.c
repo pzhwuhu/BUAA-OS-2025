@@ -11,17 +11,17 @@ int syscall_shm_new(u_int npage) {
 
 int syscall_shm_bind(int key, u_int va, u_int perm) {
 	// Lab4-Extra: Your code here. (2/8)
-	return msyscall(SYS_shm_new, key, va, perm);
+	return msyscall(SYS_shm_bind, key, va, perm);
 }
 
 int syscall_shm_unbind(int key, u_int va) {
 	// Lab4-Extra: Your code here. (3/8)
-	return msyscall(SYS_shm_new, key, va);
+	return msyscall(SYS_shm_unbind, key, va);
 }
 
 int syscall_shm_free(int key) {
 	// Lab4-Extra: Your code here. (4/8)
-	return msyscall(SYS_shm_new, key);
+	return msyscall(SYS_shm_free, key);
 }
 
 void syscall_putchar(int ch) {
