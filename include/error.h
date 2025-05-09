@@ -3,6 +3,9 @@
 
 // OS error codes.
 
+#define E_SHM_INVALID 14
+#define E_SHM_NOT_OPEN 15
+
 // Unspecified or unknown problem
 #define E_UNSPECIFIED 1
 
