@@ -27,7 +27,7 @@ int sys_shm_new(u_int npage) {
 				if (page_alloc(&pp) != 0) {
 					for(int k=0;k<j;k++){
 						struct Page *allocated = shm->pages[k];
-						page_decref(pp);
+						page_decref(allocated);
 						shm->pages[k] = NULL;
 					}
 					return -E_NO_MEM;
