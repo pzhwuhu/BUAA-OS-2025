@@ -27,8 +27,8 @@ int sys_shm_new(u_int npage) {
 				if (page_alloc(&pp) != 0) {
 					for(int k=0;k<j;k++){
 						struct Page *allocated = shm->pages[k];
+						page_decref(pp);
 						shm->pages[k] = NULL;
-						page_free(allocated);
 					}
 					return -E_NO_MEM;
 				}
@@ -90,7 +90,9 @@ int sys_shm_free(int key) {
 	}
 	for(int i=0;i<shm->npage;i++){
 		page_decref(shm->pages[i]);
+		shm->pages[i] = NULL;
 	}
+	shm->npage = 0;
 	shm->open = 0;
 	return 0;
 }
