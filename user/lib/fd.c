@@ -213,7 +213,9 @@ int read(int fdnum, void *buf, u_int n) {
 	 *  A character buffer is not a C string. Only the memory within [buf, buf+n) is safe to
 	 *  use. */
 	/* Exercise 5.10: Your code here. (4/4) */
-	
+	if (r > 0) {
+		fd->fd_offset += r;
+	}
 
 	return r;
 }
