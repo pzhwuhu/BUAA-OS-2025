@@ -663,8 +663,8 @@ int traverse_file(const char *path, struct File *file, const char *name, struct 
 	nblock = file->f_size / BLOCK_SIZE;
 
 	// 1. 检查路径长度是否符合要求，如不符合，直接返回
-	if (strlen(path) == 0 || strlen(path) > MAXPATHLEN/* path 的长度为零或不小于最大路径长度*/) {
-		return 0;/*返回*/
+	if (strlen(path) == 0 || strlen(path) >= MAXPATHLEN/* path 的长度为零或不小于最大路径长度*/) {
+		return;/*返回*/
 	}
 
 	// 2. 比较当前文件名是否等于 name，如果相等则更改 res
@@ -694,7 +694,7 @@ int traverse_file(const char *path, struct File *file, const char *name, struct 
 				strcpy(pos, f->f_name);
 				pos += strlen(f->f_name);
 				*pos = '\0';
-				printf("%s", curpath);
+
 				// 4. 递归调用 traverse_file 函数
 				traverse_file(curpath, f, name, res);
 			}
