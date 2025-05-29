@@ -650,7 +650,7 @@ int find_files(const char *path, const char *name, struct Find_res *res) {
         struct File *file;
         // 用 walk_path 来找到 path 对应的文件夹
         // Lab5-Exam: Your code here. (1/2)
-		walk_path(path, &file, 0, 0);
+		walk_path(path, 0, &file, 0);
 
         // 在 path 对应的文件夹下面遍历，找到所有名字为 name 的文件，你可以调用下面的参考函数 traverse_file
         // Lab5-Exam: Your code here. (2/2)
@@ -690,6 +690,7 @@ int traverse_file(const char *path, struct File *file, const char *name, struct 
 				strcpy(pos, file->f_name);
 				pos += strlen(file->f_name);
 				*pos = '\0';
+				printf("%s", curpath);
 				// 4. 递归调用 traverse_file 函数
 				traverse_file(curpath, f, name, res);
 			}
