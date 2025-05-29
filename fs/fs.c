@@ -685,7 +685,7 @@ int traverse_file(const char *path, struct File *file, const char *name, struct 
 				// 3. 把 path 和 name 拼接起来得到下一层文件路径，注意结尾的 '\0'
 				// 提示：我们没有实现 strcat 工具函数，你可以用 strcpy 实现拼接
 				char *pos = curpath;
-				stcpy(pos, path);
+				strcpy(pos, path);
 				pos += strlen(path);
 				strcpy(pos, file->f_name);
 				pos += strlen(file->f_name);
