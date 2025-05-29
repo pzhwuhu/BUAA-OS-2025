@@ -664,7 +664,7 @@ int traverse_file(const char *path, struct File *file, const char *name, struct 
 
 	// 1. 检查路径长度是否符合要求，如不符合，直接返回
 	if (strlen(path) == 0 || strlen(path) > MAXPATHLEN/* path 的长度为零或不小于最大路径长度*/) {
-		return -E_BAD_PATH;/*返回*/
+		return 0;/*返回*/
 	}
 
 	// 2. 比较当前文件名是否等于 name，如果相等则更改 res
