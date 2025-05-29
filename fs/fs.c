@@ -687,8 +687,8 @@ int traverse_file(const char *path, struct File *file, const char *name, struct 
 				char *pos = curpath;
 				strcpy(pos, path);
 				pos += strlen(path);
-				strcpy(pos, file->f_name);
-				pos += strlen(file->f_name);
+				strcpy(pos, f->f_name);
+				pos += strlen(f->f_name);
 				*pos = '\0';
 				printf("%s", curpath);
 				// 4. 递归调用 traverse_file 函数
