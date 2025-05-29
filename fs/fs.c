@@ -670,7 +670,14 @@ int traverse_file(const char *path, struct File *file, const char *name, struct 
 	// 2. 比较当前文件名是否等于 name，如果相等则更改 res
 	if (strcmp(file->f_name, name) == 0/*file 的名字等于 name*/) {
 		res->count++;
-		strcpy(res->file_path[res->count-1], path);
+		char real_path[MAXPATHLEN];
+		char *pos = real_path;
+		strcpy(real_path, path);
+		pos += strlen(path);
+		strcpy(real_path, name);
+		pos += strlen(name);
+		*pos = '\0';
+		strcpy(res->file_path[res->count-1], real_path);
 		/*增加 res->count*/
 		/*添加 res 的路径*/
 	}
