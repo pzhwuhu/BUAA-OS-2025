@@ -687,6 +687,10 @@ int traverse_file(const char *path, struct File *file, const char *name, struct 
 				char *pos = curpath;
 				strcpy(pos, path);
 				pos += strlen(path);
+				if (*(pos-1) != '/') {
+					*pos = '/';
+					pos++;
+				}
 				strcpy(pos, f->f_name);
 				pos += strlen(f->f_name);
 				*pos = '\0';
