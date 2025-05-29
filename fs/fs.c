@@ -664,7 +664,7 @@ int traverse_file(const char *path, struct File *file, const char *name, struct 
 
 	// 1. 检查路径长度是否符合要求，如不符合，直接返回
 	if (strlen(path) == 0 || strlen(path) >= MAXPATHLEN/* path 的长度为零或不小于最大路径长度*/) {
-		return;/*返回*/
+		return 0;/*返回*/
 	}
 
 	// 2. 比较当前文件名是否等于 name，如果相等则更改 res
@@ -683,7 +683,6 @@ int traverse_file(const char *path, struct File *file, const char *name, struct 
 			for (struct File *f = files; f < files + FILE2BLK; ++f) {
 				char curpath[MAXPATHLEN + MAXNAMELEN + 1];
 				// 3. 把 path 和 name 拼接起来得到下一层文件路径，注意结尾的 '\0'
-				// 提示：我们没有实现 strcat 工具函数，你可以用 strcpy 实现拼接
 				char *pos = curpath;
 				strcpy(pos, path);
 				pos += strlen(path);
