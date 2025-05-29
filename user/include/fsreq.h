@@ -17,6 +17,11 @@ enum {
 	MAX_FSREQNO,
 };
 
+struct Fsreq_find {
+    	char req_path[MAXPATHLEN];
+    	char req_name[MAXNAMELEN];
+};
+
 struct Fsreq_open {
 	char req_path[MAXPATHLEN];
 	u_int req_omode;

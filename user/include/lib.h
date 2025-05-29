@@ -18,6 +18,9 @@ struct Find_res {
 	char file_path[MAXPATHNUM][MAXPATHLEN];
 	int count;
 };
+int fsipc_find(const char *path, const char *name, struct Find_res *res);
+
+int find(const char *path, const char *name, struct Find_res *res)
 
 // libos
 void exit(void) __attribute__((noreturn));
