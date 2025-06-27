@@ -97,7 +97,7 @@ int strcmp(const char *p, const char *q) {
 }
 char *strcat(char *dst, const char *src)
 {
-	char *p = dest;
+	char *p = dst;
 	while (*p)
 	{
 		p++;
