@@ -1,596 +1,524 @@
-/*
- * Enhanced Interactive Shell Implementation for MOS Operating System
- * Features: Command parsing, variable expansion, history management, I/O redirection
- * Authors: Advanced Shell Development Team
- * Version: 2.1
- */
-
 #include <args.h>
 #include <lib.h>
 
-// Configuration constants and character definitions
-#define WHITESPACE_CHARS " \t\r\n"
-#define OPERATOR_SYMBOLS "<|>&;()"
-#define HISTORY_BUFFER_SIZE 20
-#define MAX_ARGUMENTS 128
-#define TEMP_STRING_SIZE 256
-#define LARGE_BUFFER_SIZE 1024
-#define PATH_BUFFER_SIZE 128
+#define WHITESPACE " \t\r\n"
+#define SYMBOLS "<|>&;()"
 
-// Global state management
-static char command_history_buffer[HISTORY_BUFFER_SIZE][LARGE_BUFFER_SIZE] = {{0}};
-static int next_history_slot = 0;		  // Index for next command storage
-static int stored_commands_count = 0;	  // Total commands in history
-static int shell_instance_id;			  // Unique shell identifier
-static int condition_evaluation_flag = 0; // For conditional execution
+#define HISTFILESIZE 20
+char histcmd[HISTFILESIZE][1024] = {{0}};
+int hist_latest = 0; // Index to write the *next* command
+int hist_count = 0;	 // Total number of commands in history
 
-// Function prototypes
-void execute_shell_command(char *command_line);
-static void secure_string_copy(char *dest, const char *src, int limit);
+int global_shell_id;
+int flag_next_is_condition = 0;
 
-// Utility functions for code complexity
-int is_valid_command_syntax(const char *cmd);
-void cleanup_shell_resources(void);
-char *strip_surrounding_whitespace(char *str);
-int count_character_occurrences(const char *text, char ch);
-void print_debug_environment_info(void);
+void runcmd(char *);
+static void strncpy(char *, const char *, int);
 
-/*
- * Validates command syntax to prevent basic errors
- */
-int is_valid_command_syntax(const char *cmd)
+int process_backquote(const char *s, char *output, int outsize, int *consumed)
 {
-	if (!cmd || strlen(cmd) == 0)
-		return 0;
-
-	int pipe_counter = 0, redirect_counter = 0;
-	for (int idx = 0; cmd[idx]; idx++)
+	// s[0] 应为反引号 '`'，查找匹配的结束反引号
+	const char *start = s + 1;
+	const char *closing = strchr(start, '`');
+	if (closing == NULL)
 	{
-		if (cmd[idx] == '|')
-			pipe_counter++;
-		if (cmd[idx] == '>' || cmd[idx] == '<')
-			redirect_counter++;
+		return -1; // 未找到匹配的反引号
 	}
-	return (pipe_counter <= 8 && redirect_counter <= 4);
-}
+	int cmd_len = closing - start; // 反引号中命令的长度
 
-/*
- * Cleanup function for shell termination
- */
-void cleanup_shell_resources(void)
-{
-	// Resource cleanup placeholder
-}
-
-/*
- * Removes leading and trailing whitespace
- */
-char *strip_surrounding_whitespace(char *str)
-{
-	if (!str)
-		return str;
-	while (*str && strchr(WHITESPACE_CHARS, *str))
-		str++;
-	int length = strlen(str);
-	while (length > 0 && strchr(WHITESPACE_CHARS, str[length - 1]))
+	char cmd[256];
+	if (cmd_len >= (int)sizeof(cmd))
 	{
-		str[--length] = '\0';
+		cmd_len = sizeof(cmd) - 1;
 	}
-	return str;
-}
-
-/*
- * Counts occurrences of specific character
- */
-int count_character_occurrences(const char *text, char ch)
-{
-	int counter = 0;
-	while (*text)
+	// 提取反引号中的命令内容
+	strncpy(cmd, start, cmd_len + 1);
+	cmd[cmd_len] = '\0';
+	// printf("sub_cmd: %s\n", cmd);
+	// 创建管道，用于捕获子命令的标准输出
+	int p[2];
+	if (pipe(p) < 0)
 	{
-		if (*text == ch)
-			counter++;
-		text++;
-	}
-	return counter;
-}
-
-/*
- * Debug function for environment information
- */
-void print_debug_environment_info(void)
-{
-	// Debug placeholder for environment state
-}
-
-/*
- * Processes command substitution with backticks
- */
-int process_backtick_substitution(const char *input_text, char *result_buffer,
-								  int result_size, int *consumed_length)
-{
-	const char *cmd_start = input_text + 1;
-	const char *cmd_end = strchr(cmd_start, '`');
-
-	if (cmd_end == NULL)
 		return -1;
-
-	int cmd_length = cmd_end - cmd_start;
-	char command_to_execute[TEMP_STRING_SIZE];
-
-	if (cmd_length >= (int)sizeof(command_to_execute))
-	{
-		cmd_length = sizeof(command_to_execute) - 1;
 	}
-
-	secure_string_copy(command_to_execute, cmd_start, cmd_length + 1);
-	command_to_execute[cmd_length] = '\0';
-
-	int pipe_fds[2];
-	if (pipe(pipe_fds) < 0)
-		return -1;
-
-	int child_pid = fork();
-	if (child_pid < 0)
-		return -1;
-
-	if (child_pid == 0)
+	int pid = fork();
+	if (pid < 0)
 	{
-		// Child: redirect output and execute
-		dup(pipe_fds[1], 1);
-		close(pipe_fds[0]);
-		close(pipe_fds[1]);
-		execute_shell_command(command_to_execute);
+		return -1;
+	}
+	if (pid == 0)
+	{
+		// --- 子进程 ---
+		// 重定向标准输出到管道写端
+		dup(p[1], 1);
+		close(p[0]);
+		close(p[1]);
+		runcmd(cmd);
 		exit(1);
 	}
 	else
 	{
-		// Parent: read output
-		close(pipe_fds[1]);
-		int total_read = 0, bytes_read;
-
-		while ((bytes_read = read(pipe_fds[0], result_buffer + total_read, 64)) > 0)
+		// --- 父进程 ---
+		close(p[1]);
+		int pos = 0, n;
+		while ((n = read(p[0], output + pos, 64)) > 0)
 		{
-			total_read += bytes_read;
+			pos += n;
 		}
-
-		result_buffer[total_read] = '\0';
-		close(pipe_fds[0]);
-		wait(child_pid);
+		output[pos] = '\0';
+		// printf("output: %s\n", output);
+		close(p[0]);
+		wait(pid);
 	}
-
-	*consumed_length = (cmd_end - input_text) + 1;
+	*consumed = (closing - s) + 1; // 包括起始和结束反引号
 	return 0;
 }
-
-/*
- * Advanced token parser for command line elements
+/* Overview:
+ *   Parse the next token from the string at s.
+ *
+ * Post-Condition:
+ *   Set '*p1' to the beginning of the token and '*p2' to just past the token.
+ *   Return:
+ *     - 0 if the end of string is reached.
+ *     - '<' for < (stdin redirection).
+ *     - '>' for > (stdout redirection).
+ *     - '|' for | (pipe).
+ *     - 'w' for a word (command, argument, or file name).
+ *
+ *   The buffer is modified to turn the spaces after words into zero bytes ('\0'), so that the
+ *   returned token is a null-terminated string.
  */
-int extract_next_token(char *input_str, char **token_begin, char **token_finish)
+int _gettoken(char *s, char **p1, char **p2)
 {
-	*token_begin = 0;
-	*token_finish = 0;
-
-	if (input_str == 0)
-		return 0;
-
-	// Skip and nullify whitespace
-	while (strchr(WHITESPACE_CHARS, *input_str))
+	*p1 = 0;
+	*p2 = 0;
+	if (s == 0)
 	{
-		*input_str++ = 0;
+		return 0;
 	}
 
-	if (*input_str == 0)
-		return 0;
-
-	// Handle append redirection ">>"
-	if (*input_str == '>' && *(input_str + 1) == '>')
+	while (strchr(WHITESPACE, *s))
 	{
-		*token_begin = input_str;
-		input_str[0] = input_str[1] = '\0';
-		*token_finish = input_str + 2;
+		*s++ = 0;
+	}
+	if (*s == 0)
+	{
+		return 0;
+	}
+
+	// 检查是否为追加重定向 ">>"
+	if (*s == '>' && *(s + 1) == '>')
+	{
+		*p1 = s;
+		s[0] = '\0'; // 将 ">>" 所在位置用空字符截断
+		s[1] = '\0';
+		*p2 = s + 2; // p2 指向 ">>" 之后的位置
 		return '-';
 	}
 
-	// Handle logical AND "&&"
-	if (*input_str == '&' && *(input_str + 1) == '&')
+	if (*s == '&' && *(s + 1) == '&')
 	{
-		*token_begin = input_str;
-		input_str[0] = input_str[1] = 0;
-		*token_finish = input_str + 2;
-		return '*';
+		*p1 = s;
+		s[0] = s[1] = 0;
+		*p2 = s + 2;
+		return '*'; // 代表 &&
 	}
 
-	// Handle logical OR "||"
-	if (*input_str == '|' && *(input_str + 1) == '|')
+	if (*s == '|' && *(s + 1) == '|')
 	{
-		*token_begin = input_str;
-		input_str[0] = input_str[1] = 0;
-		*token_finish = input_str + 2;
-		return '+';
+		*p1 = s;
+		s[0] = s[1] = 0;
+		*p2 = s + 2;
+		return '+'; // 代表 ||
 	}
 
-	// Handle single special symbols
-	if (strchr(OPERATOR_SYMBOLS, *input_str))
+	if (strchr(SYMBOLS, *s))
 	{
-		int symbol_token = *input_str;
-		*token_begin = input_str;
-		*input_str++ = 0;
-		*token_finish = input_str;
-		return symbol_token;
+		int t = *s;
+		*p1 = s;
+		*s++ = 0;
+		*p2 = s;
+		return t;
 	}
 
-	// Handle comments
-	if (*input_str == '#')
+	// 如果遇到注释符 '#'，则将 '#' 后直到行末的部分视为注释，返回 '#' token
+	if (*s == '#')
 	{
-		*token_begin = input_str;
-		while (*input_str && *input_str != '\n')
-			input_str++;
-		*token_finish = input_str;
+		*p1 = s;
+		while (*s && *s != '\n')
+		{
+			s++;
+		}
+		*p2 = s;
 		return '#';
 	}
 
-	// Parse word tokens with backtick substitution
-	*token_begin = input_str;
-	while (*input_str && !strchr(WHITESPACE_CHARS OPERATOR_SYMBOLS, *input_str))
+	*p1 = s;
+	while (*s && !strchr(WHITESPACE SYMBOLS, *s))
 	{
-		if (*input_str == '`')
+		if (*s == '`')
 		{
-			int consumed_chars = 0;
-			char substitution_output[64] = {0};
-
-			if (process_backtick_substitution(input_str, substitution_output,
-											  sizeof(substitution_output), &consumed_chars) != 0)
+			int consumed = 0;
+			char substitution[64] = {0};
+			if (process_backquote(s, substitution, sizeof(substitution), &consumed) != 0)
 			{
-				debugf("Syntax error: unmatched backtick.\n");
+				debugf("Syntax error: unmatched backquote.\n");
 				return -1;
 			}
-
-			char remaining_part[64] = {0};
-			strcpy(remaining_part, input_str + consumed_chars);
-			strcpy(input_str, substitution_output);
-			strcpy(input_str + strlen(substitution_output), remaining_part);
-			input_str += strlen(substitution_output);
-			continue;
+			// 保存反引号之后的剩余部分
+			char remainder[64] = {0};
+			strcpy(remainder, s + consumed);
+			// 用 substitution 覆盖当前反引号表达式部分
+			strcpy(s, substitution);
+			// 将 remainder 接到 substitution 后面
+			strcpy(s + strlen(substitution), remainder);
+			// s 指针向后推进 substitution 部分的长度后继续解析
+			s += strlen(substitution);
+			continue; // 继续判断下一个字符
 		}
-		input_str++;
+		s++;
 	}
-
-	*token_finish = input_str;
+	*p2 = s;
 	return 'w';
 }
 
-/*
- * Stateful token getter with internal state management
- */
-int get_token_with_state(char *input_str, char **token_ptr)
+int gettoken(char *s, char **p1)
 {
-	static int current_tok, next_tok;
-	static char *next_start, *next_end;
+	static int c, nc;
+	static char *np1, *np2;
 
-	if (input_str)
+	if (s)
 	{
-		next_tok = extract_next_token(input_str, &next_start, &next_end);
+		nc = _gettoken(s, &np1, &np2);
 		return 0;
 	}
-
-	current_tok = next_tok;
-	*token_ptr = next_start;
-	next_tok = extract_next_token(next_end, &next_start, &next_end);
-	return current_tok;
+	c = nc;
+	*p1 = np1;
+	nc = _gettoken(np2, &np1, &np2);
+	return c;
 }
 
 /*
- * Expands environment variables in command tokens
+ * 变量展开：若 token 以 '$' 开头，通过系统调用获取变量值替换 token。
  */
-void expand_environment_variable(const char *token, char *expanded_buffer, int buffer_limit)
+void expand_token(const char *token, char *dest, int dest_size)
 {
 	if (token[0] != '$')
 	{
-		// Regular token - copy unchanged
-		int copy_idx = 0;
-		while (copy_idx < buffer_limit - 1 && token[copy_idx] != '\0')
+		int i = 0;
+		while (i < dest_size - 1 && token[i] != '\0')
 		{
-			expanded_buffer[copy_idx] = token[copy_idx];
-			copy_idx++;
+			dest[i] = token[i];
+			i++;
 		}
-		expanded_buffer[copy_idx] = '\0';
+		dest[i] = '\0';
 		return;
 	}
-
-	// Variable token - extract name and expand
-	int token_idx = 1, var_name_idx = 0;
-	char variable_name[64];
-
-	while (token[token_idx] &&
-		   ((token[token_idx] >= 'a' && token[token_idx] <= 'z') ||
-			(token[token_idx] >= 'A' && token[token_idx] <= 'Z') ||
-			(token[token_idx] == '_') ||
-			(token[token_idx] >= '0' && token[token_idx] <= '9')) &&
-		   var_name_idx < (int)sizeof(variable_name) - 1)
+	// token以'$'开头，从下标1开始扫描变量名，变量名由字母、数字、下划线组成
+	int i = 1, j = 0;
+	char varname[64];
+	while (token[i] && ((token[i] >= 'a' && token[i] <= 'z') || (token[i] >= 'A' && token[i] <= 'Z') || (token[i] == '_') || (token[i] >= '0' && token[i] <= '9')) && j < (int)sizeof(varname) - 1)
 	{
-		variable_name[var_name_idx++] = token[token_idx++];
+		varname[j++] = token[i++];
 	}
-	variable_name[var_name_idx] = '\0';
+	varname[j] = '\0';
 
-	char var_value[128];
-	syscall_get_var(variable_name, var_value, sizeof(var_value));
-
-	// Combine variable value with remaining token
-	int dest_idx = 0, src_idx = 0;
-	while (dest_idx < buffer_limit - 1 && var_value[src_idx] != '\0')
+	// 通过系统调用获取变量值
+	char value[128];
+	syscall_get_var(varname, value, sizeof(value));
+	// printf("value: %s\n", value);
+	// 逐字符拼接，将 value 拷贝到 dest 中
+	int d = 0, k = 0;
+	while (d < dest_size - 1 && value[k] != '\0')
 	{
-		expanded_buffer[dest_idx++] = var_value[src_idx++];
+		dest[d++] = value[k++];
 	}
-
-	src_idx = 0;
-	while (dest_idx < buffer_limit - 1 && token[token_idx + src_idx] != '\0')
+	// 将 token 剩余部分追加到 dest 中
+	k = 0;
+	while (d < dest_size - 1 && token[i + k] != '\0')
 	{
-		expanded_buffer[dest_idx++] = token[token_idx + src_idx++];
+		dest[d++] = token[i + k++];
 	}
-
-	expanded_buffer[dest_idx] = '\0';
+	dest[d] = '\0';
+	// printf("dest: %s\n", dest);
 }
 
-/*
- * Expands variables in all command arguments
- */
-void expand_all_argument_variables(int arg_count, char **arg_array)
+/* 对 argv 数组中的每个参数进行变量展开 */
+void expand_argv(int argc, char **argv)
 {
-	for (int i = 0; i < arg_count; i++)
+	for (int i = 0; i < argc; i++)
 	{
-		if (arg_array[i][0] == '$')
+		if (argv[i][0] == '$')
 		{
-			char expanded_arg[128];
-			expand_environment_variable(arg_array[i], expanded_arg, sizeof(expanded_arg));
-			strcpy(arg_array[i], expanded_arg);
+			char expanded[128];
+			expand_token(argv[i], expanded, sizeof(expanded));
+			/* 用展开后的字符串替换原 token */
+			strcpy(argv[i], expanded);
+			// printf("expand: %s\n", expanded);
 		}
 	}
 }
 
-/*
- * Stores command in history and saves to persistent file
- */
-void store_command_in_history(const char *cmd_text)
+/* 将当前指令 buf 写入历史缓冲区，并刷新至 .mos_history 文件 */
+void write_history(const char *buf)
 {
-	// Skip empty or whitespace-only commands
-	int has_content = 0;
-	for (int i = 0; cmd_text[i]; i++)
+	int is_whitespace = 1;
+	for (int i = 0; buf[i]; i++)
 	{
-		if (!strchr(WHITESPACE_CHARS, cmd_text[i]))
+		if (!strchr(WHITESPACE, buf[i]))
 		{
-			has_content = 1;
+			is_whitespace = 0;
 			break;
 		}
 	}
-
-	if (!has_content)
-		return;
-
-	// Store in circular buffer
-	strcpy(command_history_buffer[next_history_slot], cmd_text);
-	next_history_slot = (next_history_slot + 1) % HISTORY_BUFFER_SIZE;
-
-	if (stored_commands_count < HISTORY_BUFFER_SIZE)
+	if (is_whitespace)
 	{
-		stored_commands_count++;
+		return;
 	}
 
-	// Write to history file
-	int hist_file = open("/.mos_history", O_CREAT | O_WRONLY | O_TRUNC);
-	if (hist_file < 0)
-		return;
-
-	for (int i = 0; i < stored_commands_count; i++)
+	strcpy(histcmd[hist_latest], buf);
+	hist_latest = (hist_latest + 1) % HISTFILESIZE;
+	if (hist_count < HISTFILESIZE)
 	{
-		int hist_idx = (next_history_slot - stored_commands_count + i +
-						HISTORY_BUFFER_SIZE) %
-					   HISTORY_BUFFER_SIZE;
+		hist_count++;
+	}
 
-		if (command_history_buffer[hist_idx][0] != '\0')
+	int fd = open("/.mos_history", O_CREAT | O_WRONLY | O_TRUNC);
+	if (fd < 0)
+	{
+		return;
+	}
+
+	for (int i = 0; i < hist_count; i++)
+	{
+		int idx = (hist_latest - hist_count + i + HISTFILESIZE) % HISTFILESIZE;
+		if (histcmd[idx][0] != '\0')
 		{
-			write(hist_file, command_history_buffer[hist_idx],
-				  strlen(command_history_buffer[hist_idx]));
-			write(hist_file, "\n", 1);
+			write(fd, histcmd[idx], strlen(histcmd[idx]));
+			write(fd, "\n", 1);
 		}
 	}
-
-	close(hist_file);
+	close(fd);
 }
 
-/*
- * Comprehensive command line parser with I/O redirection support
- */
-int parse_command_arguments(char **argv_array, int *right_pipe_id)
+#define MAXARGS 128
+
+int parsecmd(char **argv, int *rightpipe)
 {
 	int argc = 0;
-
 	while (1)
 	{
-		char *token;
-		int fd, result;
-		int token_type = get_token_with_state(0, &token);
-
-		switch (token_type)
+		char *t;
+		int fd, r;
+		int c = gettoken(0, &t);
+		switch (c)
 		{
 		case 0:
 			return argc;
-
 		case '#':
-			return argc;
-
+			return argc; // 注释
 		case 'w':
-			if (argc >= MAX_ARGUMENTS)
+			if (argc >= MAXARGS)
 			{
 				debugf("too many arguments\n");
 				exit(1);
 			}
-			argv_array[argc++] = token;
+			argv[argc++] = t;
 			break;
-
 		case '<':
-			if (get_token_with_state(0, &token) != 'w')
+			if (gettoken(0, &t) != 'w')
 			{
 				debugf("syntax error: < not followed by word\n");
 				exit(1);
 			}
-
-			fd = open(token, O_RDONLY);
+			// Open 't' for reading, dup it onto fd 0, and then close the original fd.
+			// If the 'open' function encounters an error,
+			// utilize 'debugf' to print relevant messages,
+			// and subsequently terminate the process using 'exit'.
+			/* Exercise 6.5: Your code here. (1/3) */
+			fd = open(t, O_RDONLY);
 			if (fd < 0)
 			{
-				debugf("failed to open '%s'\n", token);
+				debugf("failed to open '%s'\n", t);
 				exit(1);
 			}
 			dup(fd, 0);
 			close(fd);
-			break;
+			// user_panic("< redirection not implemented");
 
+			break;
 		case '>':
-			if (get_token_with_state(0, &token) != 'w')
+			if (gettoken(0, &t) != 'w')
 			{
 				debugf("syntax error: > not followed by word\n");
 				exit(1);
 			}
-
-			fd = open(token, O_WRONLY | O_CREAT | O_TRUNC);
+			// Open 't' for writing, create it if not exist and trunc it if exist, dup
+			// it onto fd 1, and then close the original fd.
+			// If the 'open' function encounters an error,
+			// utilize 'debugf' to print relevant messages,
+			// and subsequently terminate the process using 'exit'.
+			/* Exercise 6.5: Your code here. (2/3) */
+			fd = open(t, O_WRONLY | O_CREAT | O_TRUNC);
 			if (fd < 0)
 			{
-				debugf("failed to open '%s'\n", token);
+				debugf("failed to open '%s'\n", t);
 				exit(1);
 			}
 			dup(fd, 1);
 			close(fd);
-			break;
+			// user_panic("> redirection not implemented");
 
+			break;
 		case ';':
-			if ((result = fork()) < 0)
+			if ((r = fork()) < 0)
 			{
-				debugf("fork: %d\n", result);
+				debugf("fork: %d\n", r);
 				exit(1);
 			}
-
-			*right_pipe_id = result;
-			if (result == 0)
+			*rightpipe = r;
+			if (r == 0)
 			{
 				return argc;
 			}
 			else
 			{
-				wait(result);
-				return parse_command_arguments(argv_array, right_pipe_id);
+				wait(r);
+				return parsecmd(argv, rightpipe);
 			}
 			break;
 
-		case '-': // Append redirection
-			if (get_token_with_state(0, &token) != 'w')
+		case '-':
+			if (gettoken(0, &t) != 'w')
 			{
 				debugf("syntax error: >> not followed by word\n");
 				exit(1);
 			}
-
-			if ((fd = open(token, O_WRONLY | O_CREAT)) < 0)
+			// 以只写方式打开文件；如果文件不存在，则创建它
+			if ((fd = open(t, O_WRONLY | O_CREAT)) < 0)
 			{
-				debugf("open %s for append: %d\n", token, fd);
+				debugf("open %s for append: %d\n", t, fd);
 				exit(1);
 			}
-
+			// 将文件指针移动到文件末尾以实现追加
+			// 1. 从文件描述符数字获取 Fd 结构体指针
 			struct Fd *fd_struct;
-			if ((result = fd_lookup(fd, &fd_struct)) < 0)
+			if ((r = fd_lookup(fd, &fd_struct)) < 0)
 			{
-				debugf("fd_lookup error for fd %d: %d\n", fd, result);
+				debugf("fd_lookup error for fd %d: %d\n", fd, r);
 				exit(1);
 			}
-
-			struct Filefd *file_fd = (struct Filefd *)fd_struct;
-			fd_struct->fd_offset = file_fd->f_file.f_size;
-
+			// 2. 将 Fd 结构体转换为 Filefd 结构体以访问文件元数据
+			struct Filefd *ffd = (struct Filefd *)fd_struct;
+			// 3. 将文件描述符的偏移量设置为文件大小，实现追加效果
+			fd_struct->fd_offset = ffd->f_file.f_size;
+			// 将标准输出重定向到该文件
 			dup(fd, 1);
 			close(fd);
 			break;
 
-		case '*': // Logical AND
-		{
-			int and_pid = fork();
-			if (and_pid < 0)
+		case '*': // 处理 &&
+			int pid_and = fork();
+			if (pid_and < 0)
 				user_panic("fork for && failed");
 
-			if (and_pid == 0)
+			if (pid_and == 0)
 			{
+				// 子进程：负责执行 '&&' 左边的命令。
+				// 它直接从 parsecmd 返回，将解析好的 argv 交给 runcmd 执行。
 				return argc;
 			}
 			else
 			{
-				int status = wait(and_pid);
-				if (status == 0)
+				// 父进程：作为协调者。
+				int exit_status = wait(pid_and); // 等待子进程执行完毕，并获取其退出状态。
+
+				if (exit_status == 0)
 				{
-					return parse_command_arguments(argv_array, right_pipe_id);
+					// 左边命令成功，父进程继续解析 '&&' 右边的命令。
+					return parsecmd(argv, rightpipe);
 				}
 				else
 				{
 					return 0;
 				}
 			}
-		}
-		break;
+			break;
 
-		case '+': // Logical OR
-		{
-			int or_pid = fork();
-			if (or_pid < 0)
+		case '+': // 处理 ||
+			int pid_or = fork();
+			if (pid_or < 0)
 				user_panic("fork for || failed");
 
-			if (or_pid == 0)
+			if (pid_or == 0)
 			{
+				// 子进程：执行 '||' 左边的命令。
 				return argc;
 			}
 			else
 			{
-				int status = wait(or_pid);
-				if (status != 0)
+				// 父进程：协调者。
+				int exit_status = wait(pid_or);
+
+				if (exit_status != 0)
 				{
-					return parse_command_arguments(argv_array, right_pipe_id);
+					// 左边命令失败，父进程继续解析 '||' 右边的命令。
+					return parsecmd(argv, rightpipe);
 				}
 				else
 				{
+					// 左边命令成功，跳过后续命令，直到遇到 '&&' 或 ';'
 					return 0;
 				}
 			}
-		}
-		break;
+			break;
 
-		case '|': // Pipe
-		{
-			int pipe_fds[2];
-
-			if ((result = pipe(pipe_fds)) != 0)
+		case '|':;
+			/*
+			 * First, allocate a pipe.
+			 * Then fork, set '*rightpipe' to the returned child envid or zero.
+			 * The child runs the right side of the pipe:
+			 * - dup the read end of the pipe onto 0
+			 * - close the read end of the pipe
+			 * - close the write end of the pipe
+			 * - and 'return parsecmd(argv, rightpipe)' again, to parse the rest of the
+			 *   command line.
+			 * The parent runs the left side of the pipe:
+			 * - dup the write end of the pipe onto 1
+			 * - close the write end of the pipe
+			 * - close the read end of the pipe
+			 * - and 'return argc', to execute the left of the pipeline.
+			 */
+			int p[2];
+			/* Exercise 6.5: Your code here. (3/3) */
+			if ((r = pipe(p)) != 0)
 			{
-				debugf("pipe: %d\n", result);
+				debugf("pipe: %d\n", r);
 				exit(1);
 			}
-
-			if ((result = fork()) < 0)
+			if ((r = fork()) < 0)
 			{
-				debugf("fork: %d\n", result);
+				debugf("fork: %d\n", r);
 				exit(1);
 			}
-
-			*right_pipe_id = result;
-
-			if (result == 0)
+			*rightpipe = r;
+			if (r == 0)
 			{
-				dup(pipe_fds[0], 0);
-				close(pipe_fds[0]);
-				close(pipe_fds[1]);
-				return parse_command_arguments(argv_array, right_pipe_id);
+				dup(p[0], 0);
+				close(p[0]);
+				close(p[1]);
+				return parsecmd(argv, rightpipe);
 			}
 			else
 			{
-				dup(pipe_fds[1], 1);
-				close(pipe_fds[1]);
-				close(pipe_fds[0]);
+				dup(p[1], 1);
+				close(p[1]);
+				close(p[0]);
 				return argc;
 			}
-		}
-		break;
+			// user_panic("| not implemented");
+
+			break;
 		}
 	}
 
@@ -598,604 +526,570 @@ int parse_command_arguments(char **argv_array, int *right_pipe_id)
 }
 
 /*
- * Built-in cd command implementation
+ * 内建 cd 命令实现：
+ * 当用户输入 "cd dir" 时，根据 dir 是否为绝对路径或相对路径，
+ * 检查路径合法性后修改当前工作目录。
  */
-int builtin_change_directory(int arg_count, char **arg_vector)
+int chpwd(int argc, char **argv)
 {
-	int status;
-
-	if (arg_count == 1)
+	int r;
+	if (argc == 1)
 	{
-		if ((status = chdir("/")) < 0)
+		if ((r = chdir("/")) < 0)
 		{
-			printf("cd failed: %d\n", status);
+			printf("cd failed: %d\n", r);
 			return 0;
+			exit(0);
 		}
 		return 0;
+		exit(0);
 	}
-
-	if (arg_count > 2)
+	if (argc > 2)
 	{
 		printf("Too many args for cd command\n");
 		return 1;
+		exit(1);
 	}
-
-	struct Stat file_stat;
-
-	if (arg_vector[1][0] == '/')
-	{
-		// Absolute path
-		if ((status = stat(arg_vector[1], &file_stat)) < 0)
+	struct Stat state;
+	if (argv[1][0] == '/')
+	{ // 绝对路径处理
+		if ((r = stat(argv[1], &state)) < 0)
 		{
-			printf("cd: The directory '%s' does not exist\n", arg_vector[1]);
+			printf("cd: The directory '%s' does not exist\n", argv[1]);
 			return 1;
+			exit(1);
 		}
-
-		if (!file_stat.st_isdir)
+		if (!state.st_isdir)
 		{
-			printf("cd: '%s' is not a directory\n", arg_vector[1]);
+			printf("cd: '%s' is not a directory\n", argv[1]);
 			return 1;
+			exit(1);
 		}
-
-		if ((status = chdir(arg_vector[1])) < 0)
+		if ((r = chdir(argv[1])) < 0)
 		{
-			printf("cd failed: %d\n", status);
+			printf("cd failed: %d\n", r);
 			return 1;
+			exit(1);
 		}
 	}
 	else
-	{
-		// Relative path
-		char working_path[128];
-
-		if ((status = getcwd(working_path)) < 0)
+	{ // 相对路径处理
+		char path[128];
+		if ((r = getcwd(path)) < 0)
 		{
-			printf("cd failed: %d\n", status);
+			printf("cd failed: %d\n", r);
 			return 1;
+			exit(1);
 		}
-
-		// Handle ".." parent directory
-		if (arg_vector[1][0] == '.' && arg_vector[1][1] == '.')
+		// 特殊处理 ".."：退回上一级目录
+		if (argv[1][0] == '.' && argv[1][1] == '.')
 		{
-			int path_len = strlen(working_path);
-
-			while (path_len > 1 && working_path[path_len - 1] != '/')
+			int len = strlen(path);
+			while (len > 1 && path[len - 1] != '/')
 			{
-				working_path[path_len - 1] = '\0';
-				path_len--;
+				path[len - 1] = '\0';
+				len--;
 			}
-
-			if (path_len > 1)
+			if (len > 1)
 			{
-				working_path[path_len - 1] = '\0';
+				path[len - 1] = '\0';
 			}
-
-			if (strlen(arg_vector[1]) > 3)
-			{
-				pathcat(working_path, arg_vector[1] + 3);
+			if (strlen(argv[1]) > 3)
+			{ // "../xxx"
+				pathcat(path, argv[1] + 3);
+				// printf("current path: %s\n", path);
 			}
 		}
 		else
 		{
-			pathcat(working_path, arg_vector[1]);
+			pathcat(path, argv[1]);
+			// printf("current path: %s\n", path);
 		}
-
-		if ((status = open(working_path, O_RDONLY)) < 0)
+		if ((r = open(path, O_RDONLY)) < 0)
 		{
-			printf("cd: The directory '%s' does not exist\n", arg_vector[1]);
+			printf("cd: The directory '%s' does not exist\n", argv[1]);
 			return 1;
+			exit(1);
 		}
-		close(status);
-
-		if ((status = stat(working_path, &file_stat)) < 0)
+		close(r);
+		if ((r = stat(path, &state)) < 0)
 		{
-			printf("cd: The directory '%s' does not exist\n", arg_vector[1]);
+			printf("cd: The directory '%s' does not exist\n", argv[1]);
 			return 1;
+			exit(1);
 		}
-
-		if (!file_stat.st_isdir)
+		if (!state.st_isdir)
 		{
-			printf("cd: '%s' is not a directory\n", arg_vector[1]);
+			printf("cd: '%s' is not a directory\n", argv[1]);
 			return 1;
+			exit(1);
 		}
-
-		if ((status = chdir(working_path)) < 0)
+		if ((r = chdir(path)) < 0)
 		{
-			printf("cd failed: %d\n", status);
+			printf("cd failed: %d\n", r);
 			return 1;
+			exit(1);
 		}
 	}
-
 	return 0;
 }
 
 /*
- * Built-in pwd command implementation
+ * 内建 pwd 命令实现：
+ * 打印当前进程的工作目录
  */
-int builtin_print_working_directory(int arg_count)
+int pwd(int argc)
 {
-	if (arg_count != 1)
+	if (argc != 1)
 	{
-		printf("pwd: expected 0 arguments; got %d\n", arg_count);
+		printf("pwd: expected 0 arguments; got %d\n", argc);
 		return 2;
+		// return;
 	}
-
-	char current_dir[128];
-	int status;
-
-	if ((status = getcwd(current_dir)) < 0)
+	char path[128];
+	int r;
+	if ((r = getcwd(path)) < 0)
 	{
-		printf("pwd failed: %d\n", status);
+		printf("pwd failed: %d\n", r);
 		return 2;
+		// return;
 	}
-
-	printf("%s\n", current_dir);
+	printf("%s\n", path);
 	return 0;
 }
 
-/*
- * Safe string copying utility
- */
-static void secure_string_copy(char *dest, const char *src, int max_chars)
+static void strncpy(char *dest, const char *src, int n)
 {
-	int idx = 0;
-	while (idx < max_chars - 1 && src[idx] != '\0')
+	int i = 0;
+	while (i < n - 1 && src[i] != '\0')
 	{
-		dest[idx] = src[idx];
-		idx++;
+		dest[i] = src[i];
+		i++;
 	}
-	dest[idx] = '\0';
+	dest[i] = '\0';
 }
 
-/*
- * Built-in declare command for environment variables
- */
-int builtin_declare_variable(int arg_count, char **arg_vector, int shell_id)
+/* 内建指令 declare 实现
+   格式: declare [-r] [-x] [NAME[=VALUE]]
+   其中：-r 表示只读，-x 表示环境变量（caller_shell_id 置为 0 为全局，否则传入shell的id）
+*/
+int declare(int argc, char **argv, int global_shell_id)
 {
-	int readonly_perm = 0;
-	int export_global = 0;
-	int current_arg = 1;
-
-	// Parse flags
-	while (current_arg < arg_count && arg_vector[current_arg][0] == '-' &&
-		   arg_vector[current_arg][1] != '\0')
+	int perm = 0;		 /* 默认为可修改 */
+	int export_flag = 0; /* export_flag==1 表示全局环境变量 */
+	int i = 1;
+	while (i < argc && argv[i][0] == '-' && argv[i][1] != '\0')
 	{
-
-		for (int flag_idx = 1; arg_vector[current_arg][flag_idx] != '\0'; flag_idx++)
+		for (int j = 1; argv[i][j] != '\0'; j++)
 		{
-			if (arg_vector[current_arg][flag_idx] == 'r')
+			if (argv[i][j] == 'r')
 			{
-				readonly_perm = 1;
+				perm = 1;
 			}
-			else if (arg_vector[current_arg][flag_idx] == 'x')
+			else if (argv[i][j] == 'x')
 			{
-				export_global = 1;
+				export_flag = 1;
 			}
 			else
 			{
-				printf("declare: unknown flag -%c\n", arg_vector[current_arg][flag_idx]);
+				printf("declare: unknown flag -%c\n", argv[i][j]);
 				return 1;
 			}
 		}
-		current_arg++;
+		i++;
 	}
-
-	if (current_arg >= arg_count)
+	if (i >= argc)
 	{
-		// Display all variables
-		char all_vars[256];
-		syscall_get_all_var(all_vars, sizeof(all_vars));
-		printf("%s", all_vars);
+		/* 若无后续参数，则输出所有变量 */
+		char all[256];
+		syscall_get_all_var(all, sizeof(all));
+		printf("%s", all);
 		return 0;
 	}
-
-	// Parse variable assignment
-	char *assignment = arg_vector[current_arg];
-	char var_name[MAX_VAR_NAME + 1];
-	char var_value[MAX_VAR_VALUE + 1];
-	var_value[0] = '\0';
-
-	const char *equal_sign = strchr(assignment, '=');
-	if (equal_sign)
+	/* 处理 NAME[=VALUE] */
+	char *arg = argv[i];
+	char name[MAX_VAR_NAME + 1];
+	char value[MAX_VAR_VALUE + 1];
+	value[0] = '\0';
+	const char *eq = strchr(arg, '=');
+	if (eq)
 	{
-		int name_len = equal_sign - assignment + 1;
-		if (name_len > MAX_VAR_NAME)
-			name_len = MAX_VAR_NAME;
-
-		secure_string_copy(var_name, assignment, name_len);
-		secure_string_copy(var_value, equal_sign + 1, MAX_VAR_VALUE);
+		int nlen = eq - arg + 1;
+		if (nlen > MAX_VAR_NAME)
+			nlen = MAX_VAR_NAME;
+		strncpy(name, arg, nlen);
+		strncpy(value, eq + 1, MAX_VAR_VALUE);
 	}
 	else
 	{
-		secure_string_copy(var_name, assignment, MAX_VAR_NAME);
+		strncpy(name, arg, MAX_VAR_NAME);
 	}
-
-	int caller = export_global ? 0 : shell_id;
-	int result = syscall_declare_var(var_name, var_value, readonly_perm, caller);
-
-	if (result != 0)
+	int caller = export_flag ? 0 : global_shell_id;
+	// printf("name: %s, value: %s, caller: %d\n", name, value, caller);
+	int ret = syscall_declare_var(name, value, perm, caller);
+	if (ret != 0)
 	{
-		printf("declare: failed to declare variable %s\n", var_name);
+		printf("declare: failed to declare variable %s\n", name);
 		return 1;
 	}
-
+	// /* 输出所有全局变量 */
+	// char all[1024];
+	// int len = syscall_get_all_var(all, sizeof(all));
+	// printf("%s", all);
 	return 0;
 }
 
-/*
- * Built-in unset command for environment variables
- */
-int builtin_unset_variable(int arg_count, char **arg_vector, int shell_id)
+/* 内建指令 unset 实现 */
+int unset(int argc, char **argv, int global_shell_id)
 {
-	if (arg_count < 2)
+	if (argc < 2)
 	{
 		printf("unset: missing variable name\n");
 		return 1;
 	}
-
-	int result = syscall_unset_var(arg_vector[1], shell_id);
-	if (result != 0)
+	int ret = syscall_unset_var(argv[1], global_shell_id);
+	if (ret != 0)
 	{
-		printf("unset: failed to remove variable %s\n", arg_vector[1]);
+		printf("unset: failed to remove variable %s\n", argv[1]);
 		return 1;
 	}
-
 	return 0;
 }
 
-/*
- * Built-in history command implementation
- */
-void builtin_show_history()
+/* 执行命令的内建指令 history 实现 */
+void history()
 {
-	int hist_fd = open("/.mos_history", O_RDONLY);
-	if (hist_fd < 0)
+	int fd = open("/.mos_history", O_RDONLY);
+	if (fd < 0)
 	{
 		debugf("cannot open /.mos_history\n");
 		return;
 	}
-
-	char hist_content[4096];
-	int bytes_read = read(hist_fd, hist_content, sizeof(hist_content) - 1);
-
-	if (bytes_read >= 0)
+	char history_buf[4096];
+	int n = read(fd, history_buf, sizeof(history_buf) - 1);
+	if (n >= 0)
 	{
-		hist_content[bytes_read] = '\0';
-		printf("%s", hist_content);
+		history_buf[n] = '\0';
+		printf("%s", history_buf);
 	}
-
-	close(hist_fd);
+	close(fd);
 }
 
-/*
- * Main command execution function
- */
-void execute_shell_command(char *command_line)
+void runcmd(char *s)
 {
-	get_token_with_state(command_line, 0);
+	gettoken(s, 0);
 
-	char *command_argv[MAX_ARGUMENTS];
-	int right_pipe_process = 0;
-	int operation_result;
-	int command_exit_status = 0;
-
-	int argument_count = parse_command_arguments(command_argv, &right_pipe_process);
-	if (argument_count == 0)
+	char *argv[MAXARGS];
+	int rightpipe = 0;
+	int r;
+	int exit_status = 0;
+	int argc = parsecmd(argv, &rightpipe);
+	if (argc == 0)
 	{
 		exit(0);
 		return;
 	}
+	argv[argc] = 0;
 
-	command_argv[argument_count] = 0;
+	/* 对参数进行变量展开 */
+	expand_argv(argc, argv);
 
-	// Expand environment variables
-	expand_all_argument_variables(argument_count, command_argv);
-
-	// Handle built-in commands
-	if (argument_count > 0)
+	// 对于内建指令
+	// printf("do incmd argc: %d\n", argc);
+	if (argc > 0)
 	{
-		if (strcmp(command_argv[0], "cd") == 0)
+		// printf("do cd2\n");
+		if (strcmp(argv[0], "cd") == 0)
 		{
-			operation_result = builtin_change_directory(argument_count, command_argv);
+			// printf("do cd3\n");
+			r = chpwd(argc, argv);
+			// exit(r);
 			return;
 		}
-		else if (strcmp(command_argv[0], "pwd") == 0)
+		else if (strcmp(argv[0], "pwd") == 0)
 		{
-			operation_result = builtin_print_working_directory(argument_count);
+			r = pwd(argc);
+			// exit(r);
 			return;
 		}
-		else if (strcmp(command_argv[0], "declare") == 0)
+		else if (strcmp(argv[0], "declare") == 0)
 		{
-			operation_result = builtin_declare_variable(argument_count, command_argv, shell_instance_id);
+			r = declare(argc, argv, global_shell_id);
+			// exit(r);
 			return;
 		}
-		else if (strcmp(command_argv[0], "unset") == 0)
+		else if (strcmp(argv[0], "unset") == 0)
 		{
-			operation_result = builtin_unset_variable(argument_count, command_argv, shell_instance_id);
+			r = unset(argc, argv, global_shell_id);
+			// exit(r);
 			return;
 		}
-		else if (strcmp(command_argv[0], "history") == 0)
+		else if (strcmp(argv[0], "history") == 0)
 		{
-			builtin_show_history();
+			history();
+			// exit(0);
 			return;
 		}
 	}
 
-	// Execute external command
-	int spawned_process = spawn(command_argv[0], command_argv);
-
-	if (spawned_process < 0)
+	int child = spawn(argv[0], argv);
+	if (child < 0)
 	{
-		// Try with .b extension
-		char extended_command[256];
-		int cmd_length = strlen(command_argv[0]);
-		strcpy(extended_command, command_argv[0]);
-
-		if (cmd_length >= 2 && extended_command[cmd_length - 2] == '.' &&
-			extended_command[cmd_length - 1] == 'b')
+		char cmd[256];
+		int len = strlen(argv[0]);
+		strcpy(cmd, argv[0]);
+		if (len >= 2 && cmd[len - 2] == '.' && cmd[len - 1] == 'b')
 		{
-			extended_command[cmd_length - 2] = '\0';
+			cmd[len - 2] = '\0';
 		}
 		else
 		{
-			extended_command[cmd_length] = '.';
-			extended_command[cmd_length + 1] = 'b';
-			extended_command[cmd_length + 2] = '\0';
+			cmd[len] = '.';
+			cmd[len + 1] = 'b';
+			cmd[len + 2] = '\0';
 		}
-
-		spawned_process = spawn(extended_command, command_argv);
+		child = spawn(cmd, argv);
 	}
-
 	close_all();
-
-	if (spawned_process >= 0)
+	if (child >= 0)
 	{
-		command_exit_status = wait(spawned_process);
+		exit_status = wait(child);
 	}
 	else
 	{
-		debugf("spawn %s: %d\n", command_argv[0], spawned_process);
-		command_exit_status = 1;
+		debugf("spawn %s: %d\n", argv[0], child);
+		exit_status = 1; // 命令未找到，设置失败状态
 	}
-
-	if (right_pipe_process)
+	if (rightpipe)
 	{
-		wait(right_pipe_process);
+		wait(rightpipe);
 	}
-
-	exit(command_exit_status);
+	exit(exit_status);
 }
 
-/*
- * Enhanced memory move implementation
- */
-void *enhanced_memory_move(void *dest_ptr, const void *src_ptr, size_t num_bytes)
+void *memmove(void *dest, const void *src, size_t n)
 {
-	char *destination = dest_ptr;
-	const char *source = src_ptr;
+	char *d = dest;
+	const char *s = src;
 
-	if (destination == source)
-		return destination;
-
-	if (destination < source)
+	if (d == s)
 	{
-		for (size_t i = 0; i < num_bytes; i++)
+		return d;
+	}
+
+	if (d < s)
+	{
+		for (size_t i = 0; i < n; i++)
 		{
-			destination[i] = source[i];
+			d[i] = s[i];
 		}
 	}
 	else
 	{
-		for (size_t i = num_bytes; i > 0; i--)
+		for (size_t i = n; i > 0; i--)
 		{
-			destination[i - 1] = source[i - 1];
+			d[i - 1] = s[i - 1];
 		}
 	}
-
-	return dest_ptr;
+	return dest;
 }
 
-/*
- * Advanced line display refresh with cursor management
- */
-void refresh_command_line_display(const char *prompt_str, char *line_buffer,
-								  int line_length, int cursor_index)
+void refresh_line(const char *prompt, char *buf, int len, int cursor_pos)
 {
+	// 1. 移动光标到行首
 	printf("\r");
-	printf("%s", prompt_str);
-	printf("%s", line_buffer);
+	// 2. 输出提示符
+	printf("%s", prompt);
+	// 3. 输出整个缓冲区内容
+	printf("%s", buf);
+	// 4. 清除光标后多余的旧字符（防止之前更长行残留）
 	printf("\x1b[K");
-	printf("\r\x1b[%dC", (int)strlen(prompt_str) + cursor_index);
+	// 5. 将光标移回到正确的位置（提示符长度 + 当前光标位置）
+	printf("\r\x1b[%dC", (int)strlen(prompt) + cursor_pos);
 }
 
-/*
- * Advanced interactive command line reader with full editing support
- */
-void read_interactive_command_line(char *cmd_buffer, u_int max_buffer_size)
+void readline(char *buf, u_int n)
 {
-	int cursor_position = 0;
-	int line_content_length = 0;
-	int history_browse_index = -1;
-	char preserved_input[LARGE_BUFFER_SIZE] = {0};
-	char input_character;
-	const char *command_prompt = "$ ";
+	int i = 0;				  // 当前光标位置（在 buf 内索引）
+	int len = 0;			  // 当前缓冲区有效字符长度
+	int hist_nav_idx = -1;	  // -1 表示当前未处于历史记录浏览模式，否则表示历史数组 histcmd 的索引
+	char lastcmd[1024] = {0}; // 用于保存开始浏览历史前当前输入的内容
+	char ch;
+	const char *prompt = "$ "; // 提示符
 
-	cmd_buffer[0] = '\0';
+	// 清空输入缓冲区
+	buf[0] = '\0';
 
 	while (1)
 	{
-		int read_status = read(0, &input_character, 1);
-		if (read_status < 1)
-			exit(1);
-
-		switch (input_character)
+		int r = read(0, &ch, 1);
+		if (r < 1)
 		{
+			exit(1);
+		}
+
+		switch (ch)
+		{
+		// 回车或换行结束输入
 		case '\r':
 		case '\n':
-			cmd_buffer[line_content_length] = '\0';
+			buf[len] = '\0';
 			printf("\n");
 			return;
 
-		case 1: // Ctrl-A
-			if (cursor_position > 0)
+		// Ctrl-A: 移动光标到行首 (ASCII 1)
+		case 1:
+			if (i > 0)
 			{
-				cursor_position = 0;
-				refresh_command_line_display(command_prompt, cmd_buffer,
-											 line_content_length, cursor_position);
+				i = 0;
+				refresh_line(prompt, buf, len, i);
 			}
 			break;
 
-		case 5: // Ctrl-E
-			if (cursor_position < line_content_length)
+		// Ctrl-E: 移动光标到行尾 (ASCII 5)
+		case 5:
+			if (i < len)
 			{
-				cursor_position = line_content_length;
-				refresh_command_line_display(command_prompt, cmd_buffer,
-											 line_content_length, cursor_position);
+				i = len;
+				refresh_line(prompt, buf, len, i);
 			}
 			break;
 
-		case 11: // Ctrl-K
-			if (cursor_position < line_content_length)
+		// Ctrl-K: 删除从当前光标位置到行尾 (ASCII 11)
+		case 11:
+			if (i < len)
 			{
-				cmd_buffer[cursor_position] = '\0';
-				line_content_length = cursor_position;
-				refresh_command_line_display(command_prompt, cmd_buffer,
-											 line_content_length, cursor_position);
+				buf[i] = '\0';
+				len = i;
+				refresh_line(prompt, buf, len, i);
 			}
 			break;
 
-		case 21: // Ctrl-U
-			if (cursor_position > 0)
+		// Ctrl-U: 删除从行首到当前光标前的所有字符 (ASCII 21)
+		case 21:
+			if (i > 0)
 			{
-				enhanced_memory_move(&cmd_buffer[0], &cmd_buffer[cursor_position],
-									 line_content_length - cursor_position + 1);
-				line_content_length -= cursor_position;
-				cursor_position = 0;
-				refresh_command_line_display(command_prompt, cmd_buffer,
-											 line_content_length, cursor_position);
+				memmove(&buf[0], &buf[i], len - i + 1);
+				len -= i;
+				i = 0;
+				refresh_line(prompt, buf, len, i);
 			}
 			break;
 
-		case 23: // Ctrl-W
+		// Ctrl-W: 删除光标左侧最近一个单词 (ASCII 23)
+		case 23:
 		{
-			if (cursor_position > 0)
+			if (i > 0)
 			{
-				int word_end_pos = cursor_position;
-				int word_start_pos = cursor_position;
-
-				while (word_start_pos > 0 && strchr(WHITESPACE_CHARS, cmd_buffer[word_start_pos - 1]))
+				int end_pos = i;
+				int start_pos = i;
+				// 先向左跳过空白字符
+				while (start_pos > 0 && strchr(WHITESPACE, buf[start_pos - 1]))
 				{
-					word_start_pos--;
+					start_pos--;
 				}
-
-				while (word_start_pos > 0 && !strchr(WHITESPACE_CHARS, cmd_buffer[word_start_pos - 1]))
+				// 再向左删除连续非空白字符
+				while (start_pos > 0 && !strchr(WHITESPACE, buf[start_pos - 1]))
 				{
-					word_start_pos--;
+					start_pos--;
 				}
-
-				int chars_deleted = cursor_position - word_start_pos;
-				enhanced_memory_move(&cmd_buffer[word_start_pos], &cmd_buffer[word_end_pos],
-									 line_content_length - word_end_pos + 1);
-				line_content_length -= chars_deleted;
-				cursor_position = word_start_pos;
-				refresh_command_line_display(command_prompt, cmd_buffer,
-											 line_content_length, cursor_position);
+				// 删除的字符个数
+				int numDeleted = i - start_pos;
+				// 使用 memmove 将 buf[i...] 向前覆盖删除的区域
+				memmove(&buf[start_pos], &buf[end_pos], len - end_pos + 1); // 包括结束符
+				len -= numDeleted;
+				i = start_pos;
+				refresh_line(prompt, buf, len, i);
 			}
+			break;
 		}
-		break;
 
+		// Backspace: 删除光标左侧的一个字符 (ASCII 8)
 		case 127:
-		case '\b': // Backspace
-			if (cursor_position > 0)
+		case '\b':
+			if (i > 0)
 			{
-				enhanced_memory_move(&cmd_buffer[cursor_position - 1], &cmd_buffer[cursor_position],
-									 line_content_length - cursor_position + 1);
-				cursor_position--;
-				line_content_length--;
-				refresh_command_line_display(command_prompt, cmd_buffer,
-											 line_content_length, cursor_position);
+				// 删除光标左侧的字符并将后面的字符左移覆盖
+				memmove(&buf[i - 1], &buf[i], len - i + 1);
+				i--;
+				len--;
+				refresh_line(prompt, buf, len, i);
 			}
 			break;
 
-		case 27: // ESC sequences
+		// ESC 序列，处理方向键（上下左右）
+		case 27:
 		{
-			char seq_chars[3];
-			if (read(0, &seq_chars[0], 1) != 1)
+			char seq[3];
+			if (read(0, &seq[0], 1) != 1)
 				continue;
-			if (read(0, &seq_chars[1], 1) != 1)
+			if (read(0, &seq[1], 1) != 1)
 				continue;
-
-			if (seq_chars[0] == '[')
+			if (seq[0] == '[')
 			{
-				if (history_browse_index == -1)
+				// 如果第一次进入历史浏览模式，则保存当前行
+				if (hist_nav_idx == -1)
 				{
-					strcpy(preserved_input, cmd_buffer);
+					strcpy(lastcmd, buf);
 				}
-
-				switch (seq_chars[1])
+				switch (seq[1])
 				{
-				case 'A': // Up arrow
-					printf("\x1b[B");
+				case 'A':			  // 上箭头：浏览上一条历史记录
+					printf("\x1b[B"); // 限制光标移动
+					if (hist_count == 0)
+						continue; // 若没有历史记录，则忽略
+					// 计算出最旧的一条历史记录的索引
+					int oldest_idx = (hist_latest - hist_count + HISTFILESIZE) % HISTFILESIZE;
 
-					if (stored_commands_count == 0)
-						continue;
-
-					int oldest_cmd_index = (next_history_slot - stored_commands_count +
-											HISTORY_BUFFER_SIZE) %
-										   HISTORY_BUFFER_SIZE;
-
-					if (history_browse_index == -1)
+					if (hist_nav_idx == -1)
 					{
-						history_browse_index = (next_history_slot + HISTORY_BUFFER_SIZE - 1) %
-											   HISTORY_BUFFER_SIZE;
-					}
-					else if (history_browse_index != oldest_cmd_index)
-					{
-						history_browse_index = (history_browse_index + HISTORY_BUFFER_SIZE - 1) %
-											   HISTORY_BUFFER_SIZE;
-					}
-
-					strcpy(cmd_buffer, command_history_buffer[history_browse_index]);
-					line_content_length = strlen(cmd_buffer);
-					cursor_position = line_content_length;
-					refresh_command_line_display(command_prompt, cmd_buffer,
-												 line_content_length, cursor_position);
-					break;
-
-				case 'B': // Down arrow
-					if (history_browse_index == -1)
-						continue;
-
-					if (history_browse_index == (next_history_slot + HISTORY_BUFFER_SIZE - 1) %
-													HISTORY_BUFFER_SIZE)
-					{
-						history_browse_index = -1;
-						strcpy(cmd_buffer, preserved_input);
+						// 第一次按上箭头，从最新记录开始向前浏览
+						hist_nav_idx = (hist_latest + HISTFILESIZE - 1) % HISTFILESIZE;
 					}
 					else
 					{
-						history_browse_index = (history_browse_index + 1) % HISTORY_BUFFER_SIZE;
-
-						while (command_history_buffer[history_browse_index][0] == '\0' &&
-							   history_browse_index != (next_history_slot + HISTORY_BUFFER_SIZE - 1) %
-														   HISTORY_BUFFER_SIZE)
+						// 如果当前不是最旧的记录，才继续向前
+						if (hist_nav_idx != oldest_idx)
 						{
-							history_browse_index = (history_browse_index + 1) % HISTORY_BUFFER_SIZE;
+							hist_nav_idx = (hist_nav_idx + HISTFILESIZE - 1) % HISTFILESIZE;
 						}
-
-						strcpy(cmd_buffer, command_history_buffer[history_browse_index]);
 					}
 
-					line_content_length = strlen(cmd_buffer);
-					cursor_position = line_content_length;
-					refresh_command_line_display(command_prompt, cmd_buffer,
-												 line_content_length, cursor_position);
+					// 由于 histcmd 是循环数组，可能包含旧的空字符串，但此逻辑下不会访问到未赋值的区域
+					strcpy(buf, histcmd[hist_nav_idx]);
+					len = strlen(buf);
+					i = len;
+					refresh_line(prompt, buf, len, i);
 					break;
 
-				case 'C': // Right arrow
-					if (cursor_position < line_content_length)
+				case 'B': // 下箭头：浏览下一条历史记录
+						  // printf("\x1b[A"); // 限制光标
+					if (hist_nav_idx == -1)
+						continue; // 没有进入历史浏览模式则忽略
+					// 如果已处于最新历史记录，则退出历史浏览模式返回之前行内容
+					if (hist_nav_idx == (hist_latest + HISTFILESIZE - 1) % HISTFILESIZE)
 					{
-						cursor_position++;
+						hist_nav_idx = -1;
+						strcpy(buf, lastcmd);
+					}
+					else
+					{
+						hist_nav_idx = (hist_nav_idx + 1) % HISTFILESIZE;
+						while (histcmd[hist_nav_idx][0] == '\0' && hist_nav_idx != (hist_latest + HISTFILESIZE - 1) % HISTFILESIZE)
+						{
+							hist_nav_idx = (hist_nav_idx + 1) % HISTFILESIZE;
+						}
+						strcpy(buf, histcmd[hist_nav_idx]);
+					}
+					len = strlen(buf);
+					i = len;
+					refresh_line(prompt, buf, len, i);
+					break;
+
+				case 'C': // 右箭头：光标向右移动
+					if (i < len)
+					{
+						i++;
 					}
 					else
 					{
@@ -1203,10 +1097,10 @@ void read_interactive_command_line(char *cmd_buffer, u_int max_buffer_size)
 					}
 					break;
 
-				case 'D': // Left arrow
-					if (cursor_position > 0)
+				case 'D': // 左箭头：光标向左移动
+					if (i > 0)
 					{
-						cursor_position--;
+						i--;
 					}
 					else
 					{
@@ -1215,21 +1109,21 @@ void read_interactive_command_line(char *cmd_buffer, u_int max_buffer_size)
 					break;
 				}
 			}
+			break;
 		}
-		break;
 
-		default: // Printable characters
-			if (input_character >= 32 && input_character < 127)
-			{
-				if (line_content_length < max_buffer_size - 1)
+		// 可打印字符的插入处理（普通字符插入）
+		default:
+			if (ch >= 32 && ch < 127)
+			{ // 若字符可打印
+				if (len < n - 1)
 				{
-					enhanced_memory_move(&cmd_buffer[cursor_position + 1], &cmd_buffer[cursor_position],
-										 line_content_length - cursor_position + 1);
-					cmd_buffer[cursor_position] = input_character;
-					line_content_length++;
-					cursor_position++;
-					refresh_command_line_display(command_prompt, cmd_buffer,
-												 line_content_length, cursor_position);
+					// 如果光标不在行尾，则先将后面的字符后移，为新字符预留位置
+					memmove(&buf[i + 1], &buf[i], len - i + 1);
+					buf[i] = ch; // 插入新字符
+					len++;
+					i++;
+					refresh_line(prompt, buf, len, i);
 				}
 			}
 			break;
@@ -1237,41 +1131,31 @@ void read_interactive_command_line(char *cmd_buffer, u_int max_buffer_size)
 	}
 }
 
-// Main command buffer
-char primary_command_buffer[LARGE_BUFFER_SIZE];
+char buf[1024];
 
-/*
- * Display shell usage information
- */
-void show_shell_usage(void)
+void usage(void)
 {
 	printf("usage: sh [-ix] [script-file]\n");
 	exit(1);
 }
 
-/*
- * Check if command starts with specified prefix
- */
-int command_starts_with(const char *command_str, const char *prefix_str)
+int startswith(const char *s, const char *prefix)
 {
-	while (*prefix_str)
+	while (*prefix)
 	{
-		if (*command_str != *prefix_str)
+		if (*s != *prefix)
 			return 0;
-		command_str++;
-		prefix_str++;
+		s++;
+		prefix++;
 	}
-	return (*command_str == '\0' || strchr(WHITESPACE_CHARS, *command_str) != 0);
+	return (*s == '\0' || strchr(WHITESPACE, *s) != 0);
 }
 
-/*
- * Main shell program entry point
- */
 int main(int argc, char **argv)
 {
-	int operation_result;
-	int interactive_session = iscons(0);
-	int echo_command_mode = 0;
+	int r;
+	int interactive = iscons(0);
+	int echocmds = 0;
 
 	printf("\n\033[38;2;255;100;100m:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::\033[0m\n");
 	printf("\033[38;2;255;100;100m::                                                           ::\033[0m\n");
@@ -1292,98 +1176,80 @@ int main(int argc, char **argv)
 	printf("\033[38;2;0;100;100m::                                                           ::\033[0m\n");
 	printf("\033[38;2;0;100;100m:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::\033[0m\n");
 
-	// Process command line arguments
 	ARGBEGIN
 	{
 	case 'i':
-		interactive_session = 1;
+		interactive = 1;
 		break;
 	case 'x':
-		echo_command_mode = 1;
+		echocmds = 1;
 		break;
 	default:
-		show_shell_usage();
+		usage();
 	}
 	ARGEND
 
 	if (argc > 1)
 	{
-		show_shell_usage();
+		usage();
 	}
-
 	if (argc == 1)
 	{
 		close(0);
-		if ((operation_result = open(argv[0], O_RDONLY)) < 0)
+		if ((r = open(argv[0], O_RDONLY)) < 0)
 		{
-			user_panic("open %s: %d", argv[0], operation_result);
+			user_panic("open %s: %d", argv[0], r);
 		}
-		if ((operation_result = chdir("/")) < 0)
+		if ((r = chdir("/")) < 0)
 		{
-			printf("created root path failed: %d\n", operation_result);
+			printf("created root path failed: %d\n", r);
 		}
-		user_assert(operation_result == 0);
+		user_assert(r == 0);
 	}
 
-	// Initialize shell with unique identifier
-	shell_instance_id = syscall_alloc_shell_id();
+	global_shell_id = syscall_alloc_shell_id();
 
-	// Main interactive shell loop
 	for (;;)
 	{
-		if (interactive_session)
+		if (interactive)
 		{
 			printf("\n\033[32m@pzh shell\033[0m\n\033[34m>  \033[0m");
-			printf("\n\033[32m@pzh shell\033[0m\n\033[34m>  \033[0m");
 		}
+		readline(buf, sizeof buf);
 
-		read_interactive_command_line(primary_command_buffer, sizeof primary_command_buffer);
-		store_command_in_history(primary_command_buffer);
+		write_history(buf); // 保存历史指令到.mos-history
 
-		// Handle comments and empty lines
-		if (primary_command_buffer[0] == '#')
+		if (buf[0] == '#')
 		{
 			continue;
 		}
-
-		if (echo_command_mode)
+		if (echocmds)
 		{
-			printf("# %s\n", primary_command_buffer);
+			printf("# %s\n", buf);
 		}
-
-		// Handle exit command
-		if (command_starts_with(primary_command_buffer, "exit"))
+		// 根据 buf 的起始判断是否为内建命令 exit、cd 或 pwd
+		if (startswith(buf, "exit"))
 		{
 			exit(0);
-			break;
+			break; // 直接退出循环
 		}
-
-		// Handle built-in commands that need direct execution
-		if (command_starts_with(primary_command_buffer, "cd") ||
-			command_starts_with(primary_command_buffer, "pwd") ||
-			command_starts_with(primary_command_buffer, "declare") ||
-			command_starts_with(primary_command_buffer, "unset") ||
-			command_starts_with(primary_command_buffer, "history"))
+		if (startswith(buf, "cd") || startswith(buf, "pwd") || startswith(buf, "declare") || startswith(buf, "unset") || startswith(buf, "history"))
 		{
-			execute_shell_command(primary_command_buffer);
+			runcmd(buf);
 			continue;
 		}
-
-		// Fork and execute external commands
-		if ((operation_result = fork()) < 0)
+		if ((r = fork()) < 0)
 		{
-			user_panic("fork: %d", operation_result);
+			user_panic("fork: %d", r);
 		}
-
-		if (operation_result == 0)
+		if (r == 0)
 		{
-			execute_shell_command(primary_command_buffer);
+			runcmd(buf);
 		}
 		else
 		{
-			wait(operation_result);
+			wait(r);
 		}
 	}
-
 	return 0;
 }
