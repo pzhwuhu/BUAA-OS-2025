@@ -1157,29 +1157,6 @@ int main(int argc, char **argv)
 	int interactive = iscons(0);
 	int echocmds = 0;
 
-	// --- New, Professional Box-style Welcome Screen ---
-	// // Using box-drawing characters for a clean, window-like border.
-	// // \x1b[1;36m -> Bright Cyan for the border and details
-	// // \x1b[1;37m -> Bright White for the main logo
-	// // \x1b[1;33m -> Bright Yellow for the title
-	// // \x1b[1;35m -> Bright Magenta for the subtitle
-	// // \x1b[0m    -> Reset color
-	// printf("\n");
-	// printf("\x1b[1;36m╔═══════════════════════════════════════════════════════════════════════════╗\x1b[0m\n");
-	// printf("\x1b[1;36m║\x1b[0m                                                                           \x1b[1;36m║\x1b[0m\n");
-	// printf("\x1b[1;36m║\x1b[0m    \x1b[1;37m               ███╗   ███╗   ██████╗    ███████╗                       \x1b[1;36m║\x1b[0m\n");
-	// printf("\x1b[1;36m║\x1b[0m    \x1b[1;37m               ████╗ ████║  ██╔═══██╗   ██╔════╝                       \x1b[1;36m║\x1b[0m\n");
-	// printf("\x1b[1;36m║\x1b[0m    \x1b[1;37m               ██╔████╔██║  ██║   ██║   ███████╗                       \x1b[1;36m║\x1b[0m\n");
-	// printf("\x1b[1;36m║\x1b[0m    \x1b[1;37m               ██║╚██╔╝██║  ██║   ██║   ╚════██║                       \x1b[1;36m║\x1b[0m\n");
-	// printf("\x1b[1;36m║\x1b[0m    \x1b[1;37m               ██║ ╚═╝ ██║  ╚██████╔╝   ███████║                       \x1b[1;36m║\x1b[0m\n");
-	// printf("\x1b[1;36m║\x1b[0m    \x1b[1;37m               ╚═╝     ╚═╝   ╚═════╝    ╚══════╝                       \x1b[1;36m║\x1b[0m\n");
-	// printf("\x1b[1;36m║\x1b[0m                                                                           \x1b[1;36m║\x1b[0m\n");
-	// printf("\x1b[1;36m╟───────────────────────────────────────────────────────────────────────────╢\x1b[0m\n");
-	// printf("\x1b[1;36m║\x1b[0m                       \x1b[1;33m  WELCOME TO THE MOS SHELL  \x1b[0m                        \x1b[1;36m║\x1b[0m\n");
-	// printf("\x1b[1;36m║\x1b[0m                           \x1b[1;35m  ~ BUAA-OS-2025 ~  \x1b[0m                            \x1b[1;36m║\x1b[0m\n");
-	// printf("\x1b[1;36m╚═══════════════════════════════════════════════════════════════════════════╝\x1b[0m\n");
-	// printf("\x1b[0m"); // Reset color completely
-
 	printf("\n:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::\n");
 	printf("::                                                         ::\n");
 	printf("::                     MOS Shell 2025                      ::\n");

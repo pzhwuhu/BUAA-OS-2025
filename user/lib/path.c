@@ -1,40 +1,6 @@
 #include <string.h>
 #include <lib.h>
 
-char *strcat(char *dest, const char *src)
-{
-    char *orig = dest;
-    // 移动到 dest 字符串末尾
-    while (*dest)
-    {
-        dest++;
-    }
-    // 拷贝 src 到 dest 后面
-    while ((*dest++ = *src++))
-    {
-        ;
-    }
-    return orig;
-}
-
-char *strrchr(const char *s, int c)
-{
-    char *last = 0;
-    while (*s)
-    {
-        if (*s == (char)c)
-        {
-            last = (char *)s;
-        }
-        s++;
-    }
-    if (c == '\0')
-    {
-        return (char *)s;
-    }
-    return last;
-}
-
 int chdir(char *path)
 {
     return syscall_set_cur_path(path);

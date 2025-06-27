@@ -95,3 +95,34 @@ int strcmp(const char *p, const char *q) {
 
 	return 0;
 }
+char *strcat(char *dst, const char *src)
+{
+	char *p = dest;
+	while (*p)
+	{
+		p++;
+	}
+	while ((*p++ = *src++))
+	{
+		;
+	}
+	return dst;
+}
+
+char *strrchr(const char *s, int c)
+{
+	char *last = 0;
+	while (*s)
+	{
+		if (*s == (char)c)
+		{
+			last = (char *)s;
+		}
+		s++;
+	}
+	if (c == '\0')
+	{
+		return (char *)s;
+	}
+	return last;
+}
