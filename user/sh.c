@@ -1334,7 +1334,7 @@ int main(int argc, char **argv)
 	{
 		if (interactive_session)
 		{
-			printf("\n\033[32m@pzh shell\033[0m\n\033[34m>  \033[0m");
+			printf("\n$ ");
 		}
 
 		read_interactive_command_line(primary_command_buffer, sizeof primary_command_buffer);
