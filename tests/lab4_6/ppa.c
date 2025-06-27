@@ -2,25 +2,31 @@
 
 volatile u_int *timer = (u_int *)UTEMP;
 
-void sleep(u_int t) {
+void sleep(u_int t)
+{
 	t += *timer;
-	while (*timer < t) {
+	while (*timer < t)
+	{
 		syscall_yield();
 	}
 }
 
-void sheep() {
+void sheep()
+{
 	int i;
-	for (i = 0;; ++i) {
+	for (i = 0;; ++i)
+	{
 		syscall_yield();
-		if (i >= 0xabc) {
+		if (i >= 0xabc)
+		{
 			++*timer;
 			i = 0;
 		}
 	}
 }
 
-void srv(u_int pvt) {
+void srv(u_int pvt)
+{
 	u_int me = env->env_id;
 	debugf("%x: srv up, pvt is %x\n", me, pvt);
 
@@ -29,7 +35,8 @@ void srv(u_int pvt) {
 	int i;
 	u_int *buf = (u_int *)0x60000000;
 	syscall_mem_alloc(0, buf, PTE_D);
-	for (i = 0; i < (tot >> 1); ++i) {
+	for (i = 0; i < (tot >> 1); ++i)
+	{
 		u_int who = 0;
 		u_int v = ipc_recv(&who, 0, 0);
 		debugf("%x: got %x from %x\n", me, v, who);
@@ -40,47 +47,57 @@ void srv(u_int pvt) {
 
 	sleep(1);
 
-	if (me == pvt) {
+	if (me == pvt)
+	{
 		i = 0;
-		for (i = 0; i < (tot >> 1); ++i) {
+		for (i = 0; i < (tot >> 1); ++i)
+		{
 			ipc_send(buf[i << 1], buf[i << 1 | 1] + me, 0, 0);
 		}
 		syscall_mem_unmap(0, buf);
-		while (1) {
+		while (1)
+		{
 			buf += PAGE_SIZE >> 2; // avoiding tlb issues
 			u_int who = 0, perm = 0;
 			u_int n = ipc_recv(&who, buf, &perm);
 			uassert((perm & PTE_V));
 			uassert(n == (tot >> 1));
 			int i;
-			for (i = 0; i < n; ++i) {
+			for (i = 0; i < n; ++i)
+			{
 				u_int dst = buf[i << 1];
 				u_int v = buf[i << 1 | 1];
 				uassert(v == who + dst);
 				ipc_send(dst, v - who + me + me, 0, 0);
 			}
 		}
-	} else {
+	}
+	else
+	{
 		ipc_send(pvt, tot >> 1, buf, PTE_V);
 	}
 }
 
-void cli(u_int pvt, u_int *srvs) {
+void cli(u_int pvt, u_int *srvs)
+{
 	u_int me = env->env_id;
 	debugf("%x: cli up, pvt is %x, pvt2 is %x\n", me, pvt, *srvs);
 	int i;
 
-	for (i = 0; i < (tot >> 1); ++i) {
+	for (i = 0; i < (tot >> 1); ++i)
+	{
 		u_int dst = srvs[i];
 		debugf("%x: sending %x to %x\n", me, dst + me, dst);
 		ipc_send(dst, me + dst, 0, 0);
 	}
 
-	if (me == pvt) {
+	if (me == pvt)
+	{
 		i += (tot >> 1) - 1;
 	}
 
-	while (i--) {
+	while (i--)
+	{
 		u_int who = 0;
 		u_int v = ipc_recv(&who, 0, 0);
 		debugf("%x: got %x from %x\n", me, v, who);
@@ -88,15 +105,20 @@ void cli(u_int pvt, u_int *srvs) {
 		uassert(v == me + who + who);
 	}
 
-	if (me == pvt) {
+	if (me == pvt)
+	{
 		accepted();
-	} else {
+	}
+	else
+	{
 		ipc_send(pvt, me + me + pvt, 0, 0);
 	}
 }
 
-int fork_n(int n) {
-	if (--n <= 0) {
+int fork_n(int n)
+{
+	if (--n <= 0)
+	{
 		return 0;
 	}
 	int r = fork();
@@ -104,10 +126,12 @@ int fork_n(int n) {
 	return r ? n : fork_n(n);
 }
 
-int main() {
+int main()
+{
 	syscall_mem_alloc(0, (void *)timer, PTE_D | PTE_LIBRARY);
 	*timer = 0;
-	if (fork_n(2)) {
+	if (fork_n(2))
+	{
 		sheep();
 	}
 
@@ -118,23 +142,28 @@ int main() {
 
 	volatile u_int *srvs = shm + 1000;
 	int i;
-	for (i = 0; i < (tot >> 1); ++i) {
+	for (i = 0; i < (tot >> 1); ++i)
+	{
 		srvs[i] = 0;
 	}
 
 	i = fork_n(1 + (tot >> 1));
-	if (i < (tot >> 1)) {
+	if (i < (tot >> 1))
+	{
 		srvs[i] = env->env_id;
-		while (!srvs[0]) {
+		while (!srvs[0])
+		{
 			syscall_yield();
 		}
 		srv(srvs[0]);
-		exit();
+		exit(0);
 	}
 
 	fork_n(tot >> 1);
-	for (i = 0; i < (tot >> 1); ++i) {
-		while (!srvs[i]) {
+	for (i = 0; i < (tot >> 1); ++i)
+	{
+		while (!srvs[i])
+		{
 			syscall_yield();
 		}
 	}

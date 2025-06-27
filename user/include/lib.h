@@ -14,7 +14,7 @@
 #define pages ((const volatile struct Page *)UPAGES)
 
 // libos
-void exit(void) __attribute__((noreturn));
+void exit(int status) __attribute__((noreturn));
 
 extern const volatile struct Env *env;
 
@@ -69,12 +69,22 @@ int syscall_cgetc(void);
 int syscall_write_dev(void *va, u_int dev, u_int len);
 int syscall_read_dev(void *va, u_int dev, u_int len);
 
+//lab6-shell
+int syscall_set_cur_path(char *path);
+int syscall_get_cur_path(char *buf);
+int syscall_declare_var(const char *name, const char *value, int perm, int caller_shell_id);
+int syscall_unset_var(const char *name, int caller_shell_id);
+int syscall_get_var(const char *name, char *value, int bufsize);
+int syscall_get_all_var(char *buf, int bufsize);
+int syscall_alloc_shell_id(void);
+int syscall_get_parent_id(u_int);
+
 // ipc.c
 void ipc_send(u_int whom, u_int val, const void *srcva, u_int perm);
 u_int ipc_recv(u_int *whom, void *dstva, u_int *perm);
 
 // wait.c
-void wait(u_int envid);
+int wait(u_int envid);
 
 // console.c
 int opencons(void);
@@ -100,6 +110,7 @@ int fsipc_dirty(u_int, u_int);
 int fsipc_remove(const char *);
 int fsipc_sync(void);
 int fsipc_incref(u_int);
+int fsipc_create(const char *, u_int);
 
 // fd.c
 int close(int fd);
@@ -118,6 +129,11 @@ int read_map(int fd, u_int offset, void **blk);
 int remove(const char *path);
 int ftruncate(int fd, u_int size);
 int sync(void);
+
+// path.c
+int chdir(char *path);
+int getcwd(char *buf);
+void pathcat(char *path, const char *suffix);
 
 #define user_assert(x)                                                                             \
 	do {                                                                                       \
