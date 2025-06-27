@@ -284,6 +284,8 @@ int sys_exofork(void)
 	/* Exercise 4.9: Your code here. (4/4) */
 	e->env_status = ENV_NOT_RUNNABLE;
 	e->env_pri = curenv->env_pri;
+	e->env_shell_id = curenv->env_shell_id;
+	env_copy_vars(e, curenv);
 
 	return e->env_id;
 }
