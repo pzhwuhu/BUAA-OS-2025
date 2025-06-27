@@ -3,7 +3,8 @@
 
 #ifndef __ASSEMBLER__
 
-enum {
+enum
+{
 	SYS_putchar,
 	SYS_print_cons,
 	SYS_getenvid,
@@ -22,6 +23,14 @@ enum {
 	SYS_cgetc,
 	SYS_write_dev,
 	SYS_read_dev,
+	SYS_get_cwd,
+	SYS_chdir,
+	SYS_alloc_shell_id,
+	SYS_declare_var,
+	SYS_unset_var,
+	SYS_get_var,
+	SYS_get_all_var,
+	SYS_get_parent_id,
 	MAX_SYSNO,
 };
 
